@@ -81,7 +81,7 @@ export const getAdminOverview = createServerFn({ method: "GET" })
       dashboards,
       aiPaused: aiPauses > 0,
       services: {
-        ai: Boolean(process.env["OPENAI_API_KEY"]),
+        ai: Boolean(process.env["GEMINI_API_KEY"] || process.env["OPENAI_API_KEY"]),
         googleMaps: Boolean(process.env["GOOGLE_MAPS_API_KEY"]),
         parallel: Boolean(process.env["PARALLEL_API_KEY"]),
         cron: Boolean(process.env["CRON_SECRET"]),
