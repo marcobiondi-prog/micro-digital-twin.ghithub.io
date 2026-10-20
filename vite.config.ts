@@ -25,7 +25,8 @@ export default defineConfig(({ command }) => ({
         client: { files: ["**/server/**"], specifiers: ["server-only"] },
       },
     }),
-    ...(command === "build" ? [nitro()] : []),
+    // Vercel: AI recognition can outlast the default 10 s function limit (60 s fits every plan).
+    ...(command === "build" ? [nitro({ vercel: { functions: { maxDuration: 60 } } })] : []),
     viteReact(),
     VitePWA({
       registerType: "autoUpdate",

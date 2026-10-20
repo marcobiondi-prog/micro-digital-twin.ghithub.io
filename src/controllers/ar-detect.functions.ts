@@ -108,113 +108,125 @@ async function catalogueOfLife(name: string) {
   }
 }
 
+const detectInput = z.object({ image: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).max(3_000_000), detailImage: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).max(1_000_000).optional(), kind: z.enum(["urban", "vineyard"]).default("urban"), target: z.enum(["tree", "ground", "leaf", "canopy", "interrow"]).optional(), focus: z.object({x:z.number().min(0).max(1),y:z.number().min(0).max(1),w:z.number().min(0).max(1),h:z.number().min(0).max(1)}).optional() });
+type DetectResult = { detection: Detection; soil?: Soil; survey?: GroundSurvey | null; error?: string; status?: number };
+
 /** Riconosce oggetto e specie inquadrati dalla fotocamera AR (solo utenti registrati). */
 export const detectArObject = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ image: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).max(3_000_000), detailImage: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).max(1_000_000).optional(), kind: z.enum(["urban", "vineyard"]).default("urban"), target: z.enum(["tree", "ground", "leaf", "canopy", "interrow"]).optional(), focus: z.object({x:z.number().min(0).max(1),y:z.number().min(0).max(1),w:z.number().min(0).max(1),h:z.number().min(0).max(1)}).optional() }).parse(d),
-  )
-  .handler(async ({ data }): Promise<{ detection: Detection; soil?: Soil; survey?: GroundSurvey | null; error?: string; status?: number }> => {
-    if (!aiConfigured()) return { detection: null, error: "Servizio AI non configurato." };
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: blocked, error: stateError } = await supabaseAdmin.from("ar_ai_access_state").select("status,reason").eq("scope", "recognition").maybeSingle();
-    if (stateError) return { detection: null, error: "Impossibile verificare la disponibilità del servizio AI." };
-    if (blocked) return { detection: null, error: blocked.reason, status: blocked.status };
-    const res = await aiResponses({
-        store: false,
-        stream: true,
-        reasoning: { effort: "medium", summary: "auto" },
-        include: ["reasoning.encrypted_content"],
-        text: { format: { type: "json_schema", name: "ar_recognition", strict: true, schema: z.toJSONSchema(arRecognitionSchema) } },
-        input: [
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: `${PROMPT}\n${arFocusOption(data.kind, data.target).prompt}\n${data.focus ? `Mirino normalizzato: ${JSON.stringify(data.focus)}. Identifica la pianta nel mirino; tutte le coordinate della risposta restano relative all’intero fotogramma.` : ""}\nContesto: ${data.kind === "urban" ? "urbanistica" : "vitivinicolo"}. Fornisci plant solo per una specie o un genere sostenuti dai caratteri visibili, altrimenti plant:null e identification.level uncertain; soil null se non distinguibile. Per found:false usa label vuota, type object, box e plant null. Aggiungi survey:null se il terreno non è distinguibile; altrimenti survey con consistency (breve descrizione della consistenza APPARENTE, es. compatta, granulosa, coperta; dichiarare se incerta), heatNote (esposizione visibile al sole/ombra e possibile accumulo termico, SENZA temperature, umidità o misure inventate) e regions: da 1 a 8 rettangoli del SOLO terreno visibile nella metà inferiore del fotogramma. Ogni regione ha label, box x/y/w/h normalizzati 0-1, exposure ombra|mista|esposta|incerta, plantable boolean. Non includere cielo, edifici, persone o chiome. Asfalto/cemento non piantabili. Tessitura, compattazione e calore reali richiedono sensori o analisi, non possono essere misurati dalla foto. Per il vigneto descrivi cautamente copertura/interfila, rischio da esposizione e verifica con sonda di temperatura e prova del terreno.` },
-              { type: "input_image", image_url: data.image },
-              ...(data.detailImage ? [{type:"input_text",text:"Seconda immagine: dettaglio del mirino dallo STESSO fotogramma. Usalo per la morfologia fogliare, non come pianta diversa. Box, outline e terreno devono restare riferiti alla PRIMA immagine completa."}, {type:"input_image",image_url:data.detailImage}] : []),
-            ],
-          },
-        ],
-      });
-    let p: z.infer<typeof arRecognitionSchema>;
+  .inputValidator((d) => detectInput.parse(d))
+  .handler(async ({ data }): Promise<DetectResult> => {
+    // Unexpected server failures come back as a readable error instead of a thrown request.
     try {
-      p = arRecognitionSchema.parse(JSON.parse(await readArResponse(res)));
+      return await recognize(data);
     } catch (error) {
-      if (error instanceof ArGatewayError) {
-        if (error.persistent) {
-          const { error: saveError } = await supabaseAdmin.from("ar_ai_access_state").upsert({ scope: "recognition", status: error.status, reason: error.message, updated_at: new Date().toISOString() });
-          if (saveError) console.error("AR pause persistence failed", saveError.code);
-        }
-        return { detection: null, error: error.message, status: error.status };
-      }
-      return { detection: null, error: "Risposta di riconoscimento non valida. Nessun nuovo risultato applicato." };
+      console.error("AR recognition", error);
+      const missingKey = error instanceof Error && /SUPABASE_SERVICE_ROLE_KEY/.test(error.message);
+      return { detection: null, error: missingKey ? "Server non configurato: manca SUPABASE_SERVICE_ROLE_KEY." : "Errore del server durante l’analisi. Nessun nuovo risultato applicato." };
     }
-    const KINDS: SoilKind[] = ["artificiale","argilloso","sabbioso","limoso","franco","ghiaioso","roccioso","prato","pacciamato"];
-    const ps = p.soil;
-    const survey = p.survey ? { ...p.survey, regions: p.survey.regions.filter(({ box }) => box.x >= 0 && box.y >= 0.48 && box.w > 0 && box.h > 0 && box.x + box.w <= 1.01 && box.y + box.h <= 1.01).slice(0, 8) } : null;
-    const soil: Soil =
-      ps && KINDS.includes(ps.kind)
-        ? {
-            kind: ps.kind,
-            label: String(ps.label ?? ps.kind).slice(0, 50),
-            permeability: ["bassa", "media", "alta"].includes(ps.permeability) ? ps.permeability : "media",
-            plantable: ps.kind === "artificiale" ? false : Boolean(ps.plantable),
-            note: String(ps.note ?? "").slice(0, 120),
-          }
-        : null;
-    if (!p.found || !p.box)
-      return { detection: null, soil, survey, ...(soil ? {} : { error: "Nessun terreno o pianta riconosciuto. Inquadra il suolo e avvia una nuova scansione." }) };
-    const c = (n: unknown) => Math.min(1, Math.max(0, Number(n) || 0));
-    const num = (n: unknown, lo: number, hi: number, def: number) => {
-      const v = Number(n);
-      return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def;
-    };
-    const type: "tree" | "vine" | "object" =
-      p.type === "vine" ? "vine" : p.type === "tree" ? "tree" : "object";
-
-    let species: NonNullable<Detection>["species"] = null;
-    let cooling: NonNullable<Detection>["cooling"] = null;
-    const pl = p.plant;
-    if (pl && canEstimateRecognizedPlant(p) && pl.scientificName.trim()) {
-      const sci = pl.scientificName.trim().replace(/\s+/g, " ").slice(0, 80);
-      const [gbifMatch, col] = await Promise.all([gbif(sci), catalogueOfLife(sci)]);
-      const g = col && gbifMatch && !sameBotanicalName(col.name, gbifMatch.name) ? null : gbifMatch;
-      if (!g && !col) return { soil, survey, detection: {label:p.label, type, box:p.box, outline:null, identification:p.identification, species:null, cooling:null} };
-      const form: GrowthForm = FORMS.includes(pl.form) ? pl.form : type === "vine" ? "vine" : "round";
-      const crownM = num(pl.crownM, 0.3, 30, 4);
-      const density = num(pl.density, 0, 1, 0.6);
-      const evergreen = Boolean(pl.evergreen);
-      species = {
-        commonName: String(pl.commonName ?? p.label ?? sci).slice(0, 40),
-        scientificName: col?.name ?? g?.name ?? sci,
-        family: col?.family ?? g?.family ?? null,
-        gbifKey: g?.key ?? null,
-        gbifUrl: g ? `https://www.gbif.org/species/${g.key}` : null,
-        colUrl: col ? `https://www.catalogueoflife.org/data/taxon/${encodeURIComponent(col.id)}` : null,
-        form,
-        heightM: num(pl.heightM, 0.3, 60, 6),
-        crownM,
-        evergreen,
-        density,
-      };
-      const est = estimateCooling(crownM, density, evergreen);
-      cooling = {
-        ...est,
-        note: "Stima indicativa da chioma e densità fogliare della specie",
-      };
-    }
-    return {
-      soil,
-      survey,
-      detection: {
-        label: String(p.label ?? "Oggetto").slice(0, 40),
-        type,
-        box: { x: c(p.box.x), y: c(p.box.y), w: c(p.box.w), h: c(p.box.h) },
-        identification: p.identification,
-        outline: p.outline && plantPhotoBounds(p.outline) ? p.outline : null,
-        species,
-        cooling,
-      },
-    };
   });
+
+async function recognize(data: z.infer<typeof detectInput>): Promise<DetectResult> {
+    if (!aiConfigured()) return { detection: null, error: "Servizio AI non configurato." };
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: blocked, error: stateError } = await supabaseAdmin.from("ar_ai_access_state").select("status,reason").eq("scope", "recognition").maybeSingle();
+  if (stateError) return { detection: null, error: "Impossibile verificare la disponibilità del servizio AI." };
+  if (blocked) return { detection: null, error: blocked.reason, status: blocked.status };
+  const res = await aiResponses({
+      store: false,
+      stream: true,
+      reasoning: { effort: "medium", summary: "auto" },
+      include: ["reasoning.encrypted_content"],
+      text: { format: { type: "json_schema", name: "ar_recognition", strict: true, schema: z.toJSONSchema(arRecognitionSchema) } },
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: `${PROMPT}\n${arFocusOption(data.kind, data.target).prompt}\n${data.focus ? `Mirino normalizzato: ${JSON.stringify(data.focus)}. Identifica la pianta nel mirino; tutte le coordinate della risposta restano relative all’intero fotogramma.` : ""}\nContesto: ${data.kind === "urban" ? "urbanistica" : "vitivinicolo"}. Fornisci plant solo per una specie o un genere sostenuti dai caratteri visibili, altrimenti plant:null e identification.level uncertain; soil null se non distinguibile. Per found:false usa label vuota, type object, box e plant null. Aggiungi survey:null se il terreno non è distinguibile; altrimenti survey con consistency (breve descrizione della consistenza APPARENTE, es. compatta, granulosa, coperta; dichiarare se incerta), heatNote (esposizione visibile al sole/ombra e possibile accumulo termico, SENZA temperature, umidità o misure inventate) e regions: da 1 a 8 rettangoli del SOLO terreno visibile nella metà inferiore del fotogramma. Ogni regione ha label, box x/y/w/h normalizzati 0-1, exposure ombra|mista|esposta|incerta, plantable boolean. Non includere cielo, edifici, persone o chiome. Asfalto/cemento non piantabili. Tessitura, compattazione e calore reali richiedono sensori o analisi, non possono essere misurati dalla foto. Per il vigneto descrivi cautamente copertura/interfila, rischio da esposizione e verifica con sonda di temperatura e prova del terreno.` },
+            { type: "input_image", image_url: data.image },
+            ...(data.detailImage ? [{type:"input_text",text:"Seconda immagine: dettaglio del mirino dallo STESSO fotogramma. Usalo per la morfologia fogliare, non come pianta diversa. Box, outline e terreno devono restare riferiti alla PRIMA immagine completa."}, {type:"input_image",image_url:data.detailImage}] : []),
+          ],
+        },
+      ],
+    });
+  let p: z.infer<typeof arRecognitionSchema>;
+  try {
+    p = arRecognitionSchema.parse(JSON.parse(await readArResponse(res)));
+  } catch (error) {
+    if (error instanceof ArGatewayError) {
+      if (error.persistent) {
+        const { error: saveError } = await supabaseAdmin.from("ar_ai_access_state").upsert({ scope: "recognition", status: error.status, reason: error.message, updated_at: new Date().toISOString() });
+        if (saveError) console.error("AR pause persistence failed", saveError.code);
+      }
+      return { detection: null, error: error.message, status: error.status };
+    }
+    return { detection: null, error: "Risposta di riconoscimento non valida. Nessun nuovo risultato applicato." };
+  }
+  const KINDS: SoilKind[] = ["artificiale","argilloso","sabbioso","limoso","franco","ghiaioso","roccioso","prato","pacciamato"];
+  const ps = p.soil;
+  const survey = p.survey ? { ...p.survey, regions: p.survey.regions.filter(({ box }) => box.x >= 0 && box.y >= 0.48 && box.w > 0 && box.h > 0 && box.x + box.w <= 1.01 && box.y + box.h <= 1.01).slice(0, 8) } : null;
+  const soil: Soil =
+    ps && KINDS.includes(ps.kind)
+      ? {
+          kind: ps.kind,
+          label: String(ps.label ?? ps.kind).slice(0, 50),
+          permeability: ["bassa", "media", "alta"].includes(ps.permeability) ? ps.permeability : "media",
+          plantable: ps.kind === "artificiale" ? false : Boolean(ps.plantable),
+          note: String(ps.note ?? "").slice(0, 120),
+        }
+      : null;
+  if (!p.found || !p.box)
+    return { detection: null, soil, survey, ...(soil ? {} : { error: "Nessun terreno o pianta riconosciuto. Inquadra il suolo e avvia una nuova scansione." }) };
+  const c = (n: unknown) => Math.min(1, Math.max(0, Number(n) || 0));
+  const num = (n: unknown, lo: number, hi: number, def: number) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def;
+  };
+  const type: "tree" | "vine" | "object" =
+    p.type === "vine" ? "vine" : p.type === "tree" ? "tree" : "object";
+
+  let species: NonNullable<Detection>["species"] = null;
+  let cooling: NonNullable<Detection>["cooling"] = null;
+  const pl = p.plant;
+  if (pl && canEstimateRecognizedPlant(p) && pl.scientificName.trim()) {
+    const sci = pl.scientificName.trim().replace(/\s+/g, " ").slice(0, 80);
+    const [gbifMatch, col] = await Promise.all([gbif(sci), catalogueOfLife(sci)]);
+    const g = col && gbifMatch && !sameBotanicalName(col.name, gbifMatch.name) ? null : gbifMatch;
+    if (!g && !col) return { soil, survey, detection: {label:p.label, type, box:p.box, outline:null, identification:p.identification, species:null, cooling:null} };
+    const form: GrowthForm = FORMS.includes(pl.form) ? pl.form : type === "vine" ? "vine" : "round";
+    const crownM = num(pl.crownM, 0.3, 30, 4);
+    const density = num(pl.density, 0, 1, 0.6);
+    const evergreen = Boolean(pl.evergreen);
+    species = {
+      commonName: String(pl.commonName ?? p.label ?? sci).slice(0, 40),
+      scientificName: col?.name ?? g?.name ?? sci,
+      family: col?.family ?? g?.family ?? null,
+      gbifKey: g?.key ?? null,
+      gbifUrl: g ? `https://www.gbif.org/species/${g.key}` : null,
+      colUrl: col ? `https://www.catalogueoflife.org/data/taxon/${encodeURIComponent(col.id)}` : null,
+      form,
+      heightM: num(pl.heightM, 0.3, 60, 6),
+      crownM,
+      evergreen,
+      density,
+    };
+    const est = estimateCooling(crownM, density, evergreen);
+    cooling = {
+      ...est,
+      note: "Stima indicativa da chioma e densità fogliare della specie",
+    };
+  }
+  return {
+    soil,
+    survey,
+    detection: {
+      label: String(p.label ?? "Oggetto").slice(0, 40),
+      type,
+      box: { x: c(p.box.x), y: c(p.box.y), w: c(p.box.w), h: c(p.box.h) },
+      identification: p.identification,
+      outline: p.outline && plantPhotoBounds(p.outline) ? p.outline : null,
+      species,
+      cooling,
+    },
+  };
+}
