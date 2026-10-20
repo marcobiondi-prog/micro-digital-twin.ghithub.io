@@ -71,6 +71,17 @@ describe("home videos on open", () => {
     expect(document.querySelector(".home-video-unmute")).toBeNull();
   });
 
+  it("tapping the tutorial button during muted autoplay turns sound on instead of closing it", async () => {
+    const play = viewport(1440, 900, 0);
+    play.mockRejectedValueOnce(Object.assign(new Error("blocked"), { name: "NotAllowedError" }));
+    const { getByRole } = render(createElement(HomeVideos));
+    await waitFor(() => { expect(document.querySelector("video")?.muted).toBe(true); });
+    const button = getByRole("button", { name: "Video tutorial" });
+    act(() => { button.dispatchEvent(new Event("pointerdown", { bubbles: true })); button.click(); });
+    await waitFor(() => { expect(document.querySelector("video")?.muted).toBe(false); });
+    expect(document.querySelector('.home-video-player[data-kind="tutorial"]')).not.toBeNull();
+  });
+
   it("does not autoplay when opening a shared scenario", () => {
     vi.useFakeTimers();
     window.history.replaceState(null, "", "/?scenario=abc");

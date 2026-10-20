@@ -119,6 +119,12 @@ export function HomeVideos() {
   }, []);
   const open = (kind: VideoKind) => {
     if (selectedRef.current === kind) {
+      // Tapping the button of the muted autoplaying tutorial means "I want to hear it":
+      // the page-wide first-tap listener turns sound on, so keep it playing instead of closing.
+      if (autoStarted) {
+        setAutoStarted(false);
+        return;
+      }
       close();
       return;
     }
