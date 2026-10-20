@@ -484,8 +484,10 @@ export function ArCamera({
         ? `${d.species.commonName} · ${d.identification?.level === "genus" ? "genere probabile" : "specie probabile"}`
         : `${d.label} · specie incerta, inquadra una foglia da vicino`);
 
-    } catch {
-      if (version === scanVersion.current) setFound("Analisi interrotta. Controlla la connessione prima di una nuova analisi.");
+    } catch (error) {
+      console.error("AR scan", error);
+      const unauthorized = error instanceof Error && /Unauthorized/.test(error.message);
+      if (version === scanVersion.current) setFound(unauthorized ? "Sessione scaduta: esci e accedi di nuovo prima di una nuova analisi." : "Analisi interrotta. Controlla la connessione prima di una nuova analisi.");
     } finally {
       if (version === scanVersion.current) { scanBusy.current = false; scanningRef.current = false; setScanning(false); }
     }
