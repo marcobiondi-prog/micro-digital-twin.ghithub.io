@@ -21,7 +21,7 @@
 - Timed email-demo progress stays in local presentation state, not saved decisions; stages derive from entity decisions, Realizzato needs explicit completion; external approvals render below chart/summary.
 - Shared scenarios use a base64 ?scenario= param on / (sections redirect there on fresh open); Panoramica applies it and passes the flow to Lab via sessionStorage.
 - Vineyard stress index: shared component; in the controls panel on phone/desktop, a full-width strip under grid+controls on tablet.
-- Compare uses stable baselines; reset restores the selected snapshot after edits without compounding.
+- Compare: stable baselines, snapshot resets; vineyard highlight = card closest to sliders, shared bounds.
 - Mount dialogs closed, then open via state; StrictMode's double mount makes useBackClose close initially open dialogs.
 - Ordinary capture uses synchronous system-camera.ts clicks on Android/iOS and live SystemCamera elsewhere because Windows ignores capture; gallery stays separate and touch AI stays visible.
 - AR uses validated photo planes, no synthetic plants or placement screen; ar-placement bounds size/cooling. ar-frame excludes grids from photos; ar-frame-loop caps 30 fps and pauses hidden pages.

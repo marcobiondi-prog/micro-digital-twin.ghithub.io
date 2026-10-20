@@ -1,4 +1,5 @@
 # Roadmap
+- [x] Correct vineyard slider precision, scenario bounds and all-zone mean; five tests pass and browser verifies Budget Sostenuto 35.5°C, decimal edits and all-zone upper limit.
 - [x] Lab share in installed Android APK (WebView): upload file/ZIP, share 7-day link via native bridge or Android SEND intent chooser. Physical APK unverified.
 
 - [x] AI camera: heat legend centred vertically on the right edge, thermal estimate width preserved. Authenticated scan and legend opening verified at 411×775 and 775×411 without overlap or browser errors; 5 tests pass, build OK. Physical APK unverified.
@@ -190,3 +191,5 @@
 - [x] Casi: added the Romanian case study (Cluj-Napoca · URBREATH Living Lab Someș) as the 14th card with its original source, reference coordinates, live weather and daily source research; job refreshed all 14 cases, 4 tests pass, build OK, browser verified desktop.
 - [x] Lab foto e video: avviso a schermo quando i file si scaricano — «Download foto/video/archivio in corso…» conspinner, poi «Foto salvata / Video salvato / Archivio salvato sul dispositivo»; browser verified single photo (prova.jpg) and two-photo ZIP (rilievo-piazza.zip), 121 tests pass, build OK.
 - [x] Home video su desktop: all'apertura restano nella hero slide a tutto campo (1248×630) senza fullscreen di sistema; verificato a 1440×900 con «Espandi video» che apre il fullscreen solo al tocco, senza errori; 8 test passano.
+- [x] Panoramica «Inizia in 3 passi»: "Prova la piazza" e "Prova il vigneto" racchiusi in una capsula in vetro più grande (stesso materiale dei selettori del Lab); verificato a 350, 411, 820 e 1440 px — due pulsanti in una riga, entirely dentro la capsula, etichette intere, build OK.
+- [x] Lab «Foto e video»: anche AI/Carica/Invia/Elimina racchiusi in un'unica capsula in vetro (stesso materiale dei selettori IA); verificato a 320, 411, 820 e 1440 px — 4 pillole in una riga da autenticati, 3 su desktop, nessuna etichetta tagliata, nessun overflow, build OK.

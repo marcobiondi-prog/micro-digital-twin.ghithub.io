@@ -54,7 +54,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" },
       { title: "MICRO DIGITAL TWIN" },
       { name: "description", content: "Micro digital twin per l'adattamento climatico urbano e vitivinicolo." },
       { property: "og:type", content: "website" },
@@ -300,6 +300,16 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const navigate = useNavigate();
   const location = useLocation();
+  useEffect(() => {
+    // iOS Safari ignores user-scalable=no: block its native pinch gestures.
+    const block = (e: Event) => e.preventDefault();
+    document.addEventListener("gesturestart", block);
+    document.addEventListener("gesturechange", block);
+    return () => {
+      document.removeEventListener("gesturestart", block);
+      document.removeEventListener("gesturechange", block);
+    };
+  }, []);
   useEffect(() => {
     const landed = window as typeof window & { __mdtLanded?: boolean };
     if (landed.__mdtLanded) return;

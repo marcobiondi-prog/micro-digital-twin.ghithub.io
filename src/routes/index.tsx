@@ -29,10 +29,13 @@ const steps = [
 
 const plan = [
   ["Casi studio con meteo aggiornato", true, true],
+  ["Aggiornamento automatico dei casi con fonti online", true, true],
   ["Simulazione urbana e vitivinicola", true, true],
   ["Dati climatici reali della località", true, true],
+  ["Importa il meteo reale come scenario di partenza", false, true],
   ["Esportazione PDF, copia e stampa", true, true],
   ["Foto e video sul dispositivo", true, true],
+  ["Invio di più foto/video in un unico ZIP", true, true],
   ["Riconoscimento IA delle foglie", false, true],
   ["Mappa virtuale del terreno in scansione", false, true],
   ["Suggerimenti IA per la posizione dei sensori", false, true],
@@ -46,9 +49,9 @@ const plan = [
 
 function Mark({ on }: { on: boolean }) {
   return on ? (
-    <span className="grid size-7 place-items-center rounded-full bg-ok/15 text-ok" role="img" aria-label="Incluso"><Check className="size-4" /></span>
+    <span className="grid size-7 place-items-center rounded-full bg-ok text-ok-foreground shadow-sm shadow-ok/45" role="img" aria-label="Incluso"><Check className="size-4 stroke-[3]" /></span>
   ) : (
-    <span className="grid size-7 place-items-center rounded-full bg-muted text-muted-foreground" role="img" aria-label="Non incluso"><X className="size-4" /></span>
+    <span className="grid size-7 place-items-center rounded-full bg-danger text-danger-foreground shadow-sm shadow-danger/45" role="img" aria-label="Non incluso"><X className="size-4 stroke-[3]" /></span>
   );
 }
 
@@ -66,7 +69,7 @@ function QuickStart() {
           </li>
         ))}
       </ol>
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+      <div className="simulation-selector-capsule mt-4 grid grid-cols-2 gap-1 rounded-full p-1.5 sm:inline-flex" role="group" aria-label="Scegli da dove partire">
         <Link to="/lab" onClick={() => go("urban")} className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full bg-primary px-2.5 py-2 text-[13px] font-medium whitespace-nowrap text-primary-foreground max-[359px]:px-2 max-[359px]:text-xs sm:w-auto sm:px-4 sm:text-sm"><Building2 className="size-4 shrink-0 max-[359px]:hidden" /><span className="truncate">Prova la piazza</span></Link>
         <Link to="/lab" onClick={() => go("vineyard")} className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full bg-muted px-2.5 py-2 text-[13px] font-medium whitespace-nowrap max-[359px]:px-2 max-[359px]:text-xs sm:w-auto sm:px-4 sm:text-sm"><Grape className="size-4 shrink-0 max-[359px]:hidden" /><span className="truncate">Prova il vigneto</span></Link>
       </div>

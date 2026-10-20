@@ -8,7 +8,7 @@ export type LabState = {
   savedAt?: number | null;
   syncedAt?: number | null;
   syncedTargets?: string[] | null;
-  urban: { trees: number; permeable: number; shade: number; location: Loc; treeCells: number[] | null; permeableCells: number[] | null; shadeCells: number[] | null };
+  urban: { trees: number; permeable: number; shade: number; location: Loc; treeCells: number[] | null; permeableCells: number[] | null; shadeCells: number[] | null; realTemp?: number | null };
   vineyard: { zones: VineZoneState[]; phase: Pheno; selected: number; allZones: boolean; location: Loc };
 };
 
@@ -39,7 +39,7 @@ export function setVineyard(patch: Partial<LabState["vineyard"]> | ((v: LabState
   state = { ...state, vineyard: { ...state.vineyard, ...p } }; emit("vineyard");
 }
 /** Restore the default scenario (keeps the chosen location). */
-export function resetUrban() { const d = defaults().urban; state = { ...state, urban: { ...d, location: state.urban.location } }; emit("urban"); }
+export function resetUrban() { const d = defaults().urban; state = { ...state, urban: { ...d, location: state.urban.location, realTemp: state.urban.realTemp ?? null } }; emit("urban"); }
 export function resetVineyard() { const d = defaults().vineyard; state = { ...state, vineyard: { ...d, location: state.vineyard.location } }; emit("vineyard"); }
 /** Urban edits refresh Urbana + Esecutivo; vineyard edits refresh Vitivinicola + Esecutivo. */
 const SYNC_TARGETS = { urban: ["Urbana", "Esecutivo"], vineyard: ["Vitivinicola", "Esecutivo"] } as const;

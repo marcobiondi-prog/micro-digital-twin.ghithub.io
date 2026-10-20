@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ArrowRight, Building2, FlaskConical, Grape, Send } from "lucide-react";
+import { ArrowRight, Building2, FlaskConical, Grape, Send, CloudSun } from "lucide-react";
 import { toast } from "sonner";
 import { Card, SectionTitle, StatusBadge } from "@/views/health";
 import { LabSyncIndicator } from "@/views/LabSyncIndicator";
@@ -11,10 +11,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SensorAdvisor } from "@/views/SensorAdvisor";
 import { RealClimatePanel } from "@/views/RealClimatePanel";
 import { LabMedia } from "@/views/LabMedia";
-import { SimulationGrid, ModeSelector, splitLocation } from "@/views/SimulationGrid";
+import { SimulationGrid, ModeSelector, splitLocation, ImportWeatherButton } from "@/views/SimulationGrid";
 import { comparison, levelTone, nextPhase, piazzaEstimate, prototypeChoice, type PrototypeId } from "@/models/scenarios";
+import { applyVineyardScenario, closestVineyardScenario, vineyardControlValue, vineyardScenarioSteps } from "@/models/vineyard-controls";
 import { resetUrban, resetVineyard, setUrban, setVineyard, useLab, vineMetrics, vineyardSituation, type LabState } from "@/models/lab-store";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import { getRealClimate } from "@/controllers/climate.functions";
 import { LAB_FLOW_KEY } from "@/views/ScenarioTools";
 
 export const Route = createFileRoute("/lab")({
@@ -48,13 +52,8 @@ function urbanPrototypeLevel(trees: number, permeable: number, shade: number): P
   return intensity < 0.2 ? "zero" : intensity < 0.65 ? "mvp" : "roadmap";
 }
 
-function vineyardPrototypeLevel(v: LabState["vineyard"]): PrototypeId {
-  const metrics = vineMetrics(v);
-  const averageStress = metrics.results.reduce((sum, result) => sum + result.s, 0) / Math.max(1, metrics.results.length);
-  return averageStress < 35 ? "zero" : averageStress < 65 ? "mvp" : "roadmap";
-}
 
-function ComparisonTable({ place, trees, permeable, shade, activeLevel, onApply }: { place: { name: string; sub: string }; trees: number; permeable: number; shade: number; activeLevel: PrototypeId; onApply: (id: PrototypeId, trees: number, permeable: number, shade: number) => void }) {
+function ComparisonTable({ place, trees, permeable, shade, activeLevel, onApply, realTemp }: { realTemp?: number | null | undefined; place: { name: string; sub: string }; trees: number; permeable: number; shade: number; activeLevel: PrototypeId; onApply: (id: PrototypeId, trees: number, permeable: number, shade: number) => void }) {
   const scenarios: UrbanScenario[] = [
     {
       name: "Zero Budget",
@@ -117,6 +116,7 @@ function ComparisonTable({ place, trees, permeable, shade, activeLevel, onApply 
               <div className="mt-3 border-t pt-3">
                 <span className="text-[10px] font-bold uppercase text-muted-foreground">Riduzione stimata</span>
                 <p className={`mt-1 font-mono text-lg font-bold ${tone.value}`}>−{estimate.lo.toFixed(1)} / −{estimate.hi.toFixed(1)}°C</p>
+                {realTemp != null && <p className="mt-1 text-xs">Meteo reale <span className="font-mono font-semibold">{realTemp.toLocaleString("it-IT")}°C</span> → percepita <span className="font-mono font-semibold">{(realTemp - (estimate.lo + estimate.hi) / 2).toFixed(1)}°C</span></p>}
               </div>
               <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{selected ? "Scenario applicato" : "Tocca per applicare"}</p>
             </button>
@@ -161,18 +161,25 @@ function PrototypeMatrix({ kind, activeLevel }: { kind: "urban" | "vineyard"; ac
   );
 }
 
-function VineComparison({ v, activeLevel, onApply }: { v: LabState["vineyard"]; activeLevel: PrototypeId; onApply: (id: PrototypeId, boost: number, cool: number, zoneIndex: number | null) => void }) {
+function VineComparison({ v, base, activeLevel, onApply }: { v: LabState["vineyard"]; base: LabState["vineyard"]["zones"]; activeLevel: PrototypeId; onApply: (id: PrototypeId, boost: number, cool: number, zoneIndex: number | null) => void }) {
   // Zone picker is synced with the shared store: the same selection drives the zone tabs and the thermal grid.
   const zoneIndex: number | null = v.allZones ? null : v.selected;
   const pickZone = (index: number | null) => index === null ? setVineyard({ allZones: true }) : setVineyard({ selected: index, allZones: false });
   const zoneLabel = zoneIndex === null ? "Tutte le zone" : `Zona ${zoneIndex + 1}`;
   const applyTo = (zones: LabState["vineyard"]["zones"], boost: number, cool: number) =>
-    zones.map((z, i) => (zoneIndex === null || i === zoneIndex ? { ...z, moisture: Math.min(100, z.moisture + boost), temperature: z.temperature - cool } : z));
-  const scen = [
-    { id: "zero" as const, name: "Zero Budget", dt: "Wizard of Oz", boost: 0, cool: 0, emphasis: "Stato attuale delle zone, osservato a mano e con dati aperti" },
-    { id: "mvp" as const, name: "Sostenibile", dt: "MVP · da prototipare", boost: 8, cool: 1, emphasis: "Irrigazione mirata guidata dai sensori sulle zone più asciutte" },
-    { id: "roadmap" as const, name: "Budget Sostenuto", dt: "Roadmap 4.0", boost: 15, cool: 2.5, emphasis: "Telemetria continua e irrigazione di precisione a regime" },
-  ];
+    applyVineyardScenario(zones, boost, cool, zoneIndex);
+  // Same value the control slider shows after applying: the selected zone, or the rounded mean of all zones.
+  const sliderValue = (sc: { boost: number; cool: number }, key: "temperature" | "moisture") => {
+    const zones = applyTo(base, sc.boost, sc.cool);
+    const raw = vineyardControlValue(zones, zoneIndex, key);
+    return (Math.round(raw * 10) / 10).toLocaleString("it-IT", { maximumFractionDigits: 1 });
+  };
+  const copy = {
+    zero: { name: "Zero Budget", dt: "Wizard of Oz", emphasis: "Stato attuale delle zone, osservato a mano e con dati aperti" },
+    mvp: { name: "Sostenibile", dt: "MVP · da prototipare", emphasis: "Irrigazione mirata guidata dai sensori sulle zone più asciutte" },
+    roadmap: { name: "Budget Sostenuto", dt: "Roadmap 4.0", emphasis: "Telemetria continua e irrigazione di precisione a regime" },
+  } as const;
+  const scen = vineyardScenarioSteps.map((step) => ({ ...step, ...copy[step.id] }));
   return (
     <div className="space-y-4">
       <div className="min-w-0 rounded-lg border bg-muted/45 p-3">
@@ -202,13 +209,13 @@ function VineComparison({ v, activeLevel, onApply }: { v: LabState["vineyard"]; 
       <div className="grid gap-3 md:grid-cols-3">
         {scen.map((sc) => {
           // Scenarios act on the live zone values: irrigation raises moisture, canopy management lowers leaf temperature.
-          const m = vineMetrics({ ...v, zones: applyTo(v.zones, sc.boost, sc.cool) });
+          const m = vineMetrics({ ...v, zones: applyTo(base, sc.boost, sc.cool) });
           const attn = m.results.filter((r) => r.s >= 60).length;
           const tone = levelTone[sc.id];
           const selected = sc.id === activeLevel;
           return (
+            <div key={sc.name} className="flex min-w-0 flex-col">
             <button
-              key={sc.name}
               type="button"
               onClick={() => onApply(sc.id, sc.boost, sc.cool, zoneIndex)}
               aria-pressed={selected}
@@ -220,13 +227,14 @@ function VineComparison({ v, activeLevel, onApply }: { v: LabState["vineyard"]; 
               <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-vine">Agisce su: {zoneLabel}</p>
               <p className="mt-1 min-h-8 text-xs text-muted-foreground">{sc.emphasis}</p>
               <dl className="mt-3 grid grid-cols-3 gap-1.5 text-center">
-                <div className="rounded-md bg-muted p-2"><dt className="text-[10px] text-muted-foreground">Umidità</dt><dd className="font-mono text-sm font-semibold">{m.moisture}%</dd></div>
-                <div className="rounded-md bg-muted p-2"><dt className="text-[10px] text-muted-foreground">Stress idrico</dt><dd className="font-mono text-sm font-semibold">{m.waterStress}</dd></div>
-                <div className="rounded-md bg-muted p-2"><dt className="text-[10px] text-muted-foreground">Stress termico</dt><dd className="font-mono text-sm font-semibold">{m.heatStress}</dd></div>
+                <div className="rounded-md bg-muted p-2"><dt className="text-[10px] text-muted-foreground">Temperatura</dt><dd className="font-mono text-sm font-semibold">{sliderValue(sc, "temperature")}°C</dd></div>
+                <div className="rounded-md bg-muted p-2"><dt className="text-[10px] text-muted-foreground">Umidità suolo</dt><dd className="font-mono text-sm font-semibold">{sliderValue(sc, "moisture")}%</dd></div>
+                <div className="rounded-md bg-muted p-2"><dt className="text-[10px] text-muted-foreground">Intervento</dt><dd className="font-mono text-xs font-semibold">{sc.boost || sc.cool ? `−${sc.cool}°C / +${sc.boost}%` : "Nessuno"}</dd></div>
               </dl>
-              <p className="mt-3 border-t pt-3 text-xs"><span className="font-semibold">{attn}</span> {attn === 1 ? "zona" : "zone"} su {v.zones.length} in attenzione · fase {v.phase}</p>
+              <p className="mt-3 border-t pt-3 text-xs">Stress idrico <span className="font-semibold">{m.waterStress}</span> · termico <span className="font-semibold">{m.heatStress}</span> · <span className="font-semibold">{attn}</span> {attn === 1 ? "zona" : "zone"} su {v.zones.length} in attenzione · fase {v.phase}</p>
               <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{selected ? "Scenario applicato" : "Tocca per applicare"}</p>
             </button>
+            </div>
           );
         })}
       </div>
@@ -234,7 +242,7 @@ function VineComparison({ v, activeLevel, onApply }: { v: LabState["vineyard"]; 
   );
 }
 
-function ComparisonDialog({ children, matrix }: { children: ReactNode; matrix: ReactNode }) {
+function ComparisonDialog({ children, matrix, onImportWeather }: { children: ReactNode; matrix: ReactNode; onImportWeather?: () => Promise<void> }) {
   const [tab, setTab] = useState<"scenarios" | "matrix">("scenarios");
   return (
     <DialogContent className="grid h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-7xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg p-0 sm:block sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)] sm:overflow-y-auto sm:overscroll-contain">
@@ -258,7 +266,7 @@ function ComparisonDialog({ children, matrix }: { children: ReactNode; matrix: R
               </TabsTrigger>
             ))}
           </TabsList>
-          <TabsContent value="scenarios" className="mt-4">{children}</TabsContent>
+          <TabsContent value="scenarios" className="mt-4 space-y-4"><ImportWeatherButton onImport={onImportWeather} />{children}</TabsContent>
           <TabsContent value="matrix" className="mt-4">{matrix}</TabsContent>
         </Tabs>
       </div>
@@ -336,6 +344,14 @@ function UrbanFlow({ onModeChange, pinnedMode }: { onModeChange: (mode: "urban" 
     setBaseline(base); setAppliedUrban(next); setPinned(id); setUrban(next);
   };
 
+  const fetchClimate = useServerFn(getRealClimate);
+  const importRealWeather = async () => {
+    const r = await fetchClimate({ data: { lat: location.lat, lng: location.lng } }).catch(() => null);
+    const t = r?.openMeteo?.temp;
+    if (t == null) { toast.error("Meteo reale non disponibile, riprova tra poco"); return; }
+    setUrban({ realTemp: Math.round(t * 10) / 10 });
+    toast.success(`Importati ${t.toLocaleString("it-IT")}°C da Open-Meteo su tutte le schede`);
+  };
   const restoreScenario = () => {
     const target = suggested.current;
     if (!target) { resetUrban(); return; }
@@ -361,7 +377,7 @@ function UrbanFlow({ onModeChange, pinnedMode }: { onModeChange: (mode: "urban" 
       <LabMedia kind="urban" context={`Scenario: ${comparison.find((l) => l.id === activeLevel)?.s ?? "attuale"}`} />
       <SimulationGrid onReset={restoreScenario} mode="urban" activeLevel={activeLevel} activeMode="urban" onModeChange={onModeChange} trees={trees} permeable={permeable} shade={shade} onTreesChange={setTrees} onPermeableChange={setPermeable} onShadeChange={setShade} />
       <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
-        <ComparisonDialog matrix={<PrototypeMatrix kind="urban" activeLevel={activeLevel} />}><ComparisonTable place={place} trees={base.trees} permeable={base.permeable} shade={base.shade} activeLevel={activeLevel} onApply={applyScenario} /></ComparisonDialog>
+        <ComparisonDialog onImportWeather={importRealWeather} matrix={<PrototypeMatrix kind="urban" activeLevel={activeLevel} />}><ComparisonTable realTemp={urban.realTemp} place={place} trees={base.trees} permeable={base.permeable} shade={base.shade} activeLevel={activeLevel} onApply={applyScenario} /></ComparisonDialog>
       </Dialog>
     </div>
   );
@@ -377,20 +393,39 @@ function VineyardFlow({ onModeChange, pinnedMode }: { onModeChange: (mode: "urba
   const suggested = useRef<{ id: PrototypeId; base: LabState["vineyard"]["zones"]; values: LabState["vineyard"] } | null>(null);
   const showComparison = () => setCompareOpen(true);
   const vineyard = useLab().vineyard;
-  // If the user edits the zones after applying, the edit becomes the new baseline.
-  if (appliedZones && vineyard.zones !== appliedZones) { setAppliedZones(null); setBaseline(null); setPinned(null); }
+  const fetchClimate = useServerFn(getRealClimate);
+  // Signed-in only: real Open-Meteo values become the new Zero Budget baseline; zones keep their relative differences.
+  const importRealWeather = async () => {
+    const { lat, lng } = vineyard.location;
+    const r = await fetchClimate({ data: { lat, lng } }).catch(() => null);
+    const om = r?.openMeteo;
+    if (!om || om.temp == null) { toast.error("Meteo reale non disponibile, riprova tra poco"); return; }
+    const soil = om.soilMoisture != null ? om.soilMoisture * 100 : null;
+    // Real values land on every zone, so all three scenario cards start from the same real baseline.
+    const zones = vineyard.zones.map((z) => ({
+      ...z,
+      temperature: Math.max(0, Math.min(45, Math.round(om.temp!))),
+      moisture: soil == null ? z.moisture : Math.max(0, Math.min(60, Math.round(soil))),
+      wind: om.wind != null ? Math.max(0, Math.min(30, Math.round(om.wind))) : z.wind,
+    }));
+    suggested.current = null; setBaseline(null); setAppliedZones(null); setPinned("zero"); setVineyard({ zones });
+    toast.success(`Importati ${om.temp.toLocaleString("it-IT")}°C${soil != null ? ` e umidità suolo ${Math.round(soil)}%` : ""} da Open-Meteo`);
+  };
   const base = baseline ?? vineyard.zones;
+  // Slider edits keep the cards anchored on the baseline, so the highlight can follow the sliders.
+  const onZonesEdit = () => { if (!baseline) setBaseline(vineyard.zones); setAppliedZones(null); setPinned(null); };
   const place = splitLocation(vineyard.location.label).name;
-  const activeLevel = pinned ?? vineyardPrototypeLevel(vineyard);
+  // Highlighted scenario = the Confronta card whose values the sliders currently match most closely.
+  const activeLevel: PrototypeId = pinned ?? closestVineyardScenario(vineyard.zones, base, vineyard.allZones ? null : vineyard.selected);
   const situation = vineyardSituation(vineyard);
   const applyScenario = (id: PrototypeId, boost: number, cool: number, zoneIndex: number | null) => {
-    const zones = base.map((z, i) => (zoneIndex === null || i === zoneIndex ? { ...z, moisture: Math.min(100, z.moisture + boost), temperature: z.temperature - cool } : z));
+    const zones = applyVineyardScenario(base, boost, cool, zoneIndex);
     suggested.current = { id, base, values: { ...vineyard, zones } };
     setBaseline(base); setAppliedZones(zones); setPinned(id); setVineyard({ zones });
   };
   const restoreScenario = () => {
     const target = suggested.current;
-    if (!target) { resetVineyard(); return; }
+    if (!target) { setBaseline(null); setAppliedZones(null); setPinned(null); resetVineyard(); return; }
     setBaseline(target.base); setAppliedZones(target.values.zones); setPinned(target.id);
     setVineyard({ ...target.values, location: vineyard.location });
   };
@@ -412,9 +447,9 @@ function VineyardFlow({ onModeChange, pinnedMode }: { onModeChange: (mode: "urba
       <RealClimatePanel kind="vineyard" />
       <SensorAdvisor kind="vineyard" />
       <LabMedia kind="vineyard" context={`${vineyard.allZones ? "Tutte le zone" : `Zona ${vineyard.selected + 1}`} · ${vineyard.phase}`} />
-      <SimulationGrid onReset={restoreScenario} mode="vineyard" activeLevel={activeLevel} activeMode="vineyard" onModeChange={onModeChange} />
+      <SimulationGrid onZonesEdit={onZonesEdit} onReset={restoreScenario} mode="vineyard" activeLevel={activeLevel} activeMode="vineyard" onModeChange={onModeChange} />
       <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
-        <ComparisonDialog matrix={<PrototypeMatrix kind="vineyard" activeLevel={activeLevel} />}><VineComparison v={vineyard} activeLevel={activeLevel} onApply={applyScenario} /></ComparisonDialog>
+        <ComparisonDialog onImportWeather={importRealWeather} matrix={<PrototypeMatrix kind="vineyard" activeLevel={activeLevel} />}><VineComparison v={vineyard} base={base} activeLevel={activeLevel} onApply={applyScenario} /></ComparisonDialog>
       </Dialog>
       <Dialog open={send} onOpenChange={setSend}>
         <DialogContent><DialogHeader><DialogTitle>Inviare i dati all’agronomo?</DialogTitle></DialogHeader><p className="text-sm text-muted-foreground">Verranno condivisi i dati delle tre zone, con la Zona 3 segnalata a livello di attenzione. L’invio è dimostrativo.</p><DialogFooter><Button variant="secondary" onClick={() => setSend(false)}>Annulla</Button><Button className="bg-vine hover:bg-vine/90" onClick={() => { setSend(false); toast.success("Dati inviati all’agronomo"); }}>Invia</Button></DialogFooter></DialogContent>

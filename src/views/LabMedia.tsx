@@ -373,7 +373,7 @@ export function LabMedia({ kind, context }: { kind: "urban" | "vineyard"; contex
                 ? "\n"
                 : "Modalità ospite: i dati non vengono salvati nel cloud."}
             </p>
-            <div className="lab-media-actions flex flex-nowrap gap-2">
+            <div className="lab-media-actions simulation-selector-capsule flex flex-nowrap gap-2 rounded-full" role="group" aria-label={`Azioni sui file ${kind === "urban" ? "della piazza" : "del vigneto"}`}>
               {userId && (
                 <Button
                   size="sm"
