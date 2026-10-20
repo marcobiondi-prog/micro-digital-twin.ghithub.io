@@ -47,20 +47,27 @@ async function geminiResponses(body: Record<string, unknown>): Promise<Response>
   const contents = typeof input === "string"
     ? [{ role: "user", parts: toGeminiParts(input) }]
     : (Array.isArray(input) ? input as { role?: string; content: unknown }[] : []).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: toGeminiParts(m.content) }));
-  // Structured output: Gemini gets JSON mode plus the schema as an instruction.
+  // Structured output: Gemini enforces the schema (responseJsonSchema) and also reads it as an instruction.
   const format = (body["text"] as { format?: { type?: string; schema?: unknown } } | undefined)?.format;
-  const system = [body["instructions"], format?.type === "json_schema" ? `Rispondi solo con JSON valido conforme a questo JSON Schema:\n${JSON.stringify(format.schema)}` : null].filter((t): t is string => typeof t === "string" && t.length > 0);
+  const schema = format?.type === "json_schema" && format.schema && typeof format.schema === "object" ? (({ $schema: _, ...rest }) => rest)(format.schema as Record<string, unknown>) : null;
+  const system = [body["instructions"], schema ? `Rispondi solo con JSON valido conforme a questo JSON Schema:\n${JSON.stringify(schema)}` : null].filter((t): t is string => typeof t === "string" && t.length > 0);
+  const request = (enforceSchema: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": process.env["GEMINI_API_KEY"] ?? "" },
+    body: JSON.stringify({
+      contents,
+      ...(system.length ? { systemInstruction: { parts: [{ text: system.join("\n\n") }] } } : {}),
+      ...(schema ? { generationConfig: { responseMimeType: "application/json", ...(enforceSchema ? { responseJsonSchema: schema } : {}) } } : {}),
+    }),
+  });
   let res: Response;
   try {
-    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": process.env["GEMINI_API_KEY"] ?? "" },
-      body: JSON.stringify({
-        contents,
-        ...(system.length ? { systemInstruction: { parts: [{ text: system.join("\n\n") }] } } : {}),
-        ...(format?.type === "json_schema" ? { generationConfig: { responseMimeType: "application/json" } } : {}),
-      }),
-    });
+    res = await request(Boolean(schema));
+    // A model or schema the structured-output mode rejects falls back to plain JSON mode.
+    if (schema && res.status === 400) {
+      const reason = await res.clone().json().catch(() => null) as { error?: { message?: string } } | null;
+      if (!/API key/i.test(reason?.error?.message ?? "")) res = await request(false);
+    }
   } catch (error) {
     console.error("Gemini request", error);
     return failure(502, "Servizio AI non raggiungibile.");
