@@ -16,6 +16,18 @@ const tutorialWebm = { url: "/videos/tutorial.webm" };
 
 type VideoKind = "promo" | "tutorial";
 
+/** Set once the tutorial has autoplayed: it starts by itself only on the first app access. */
+export const TUTORIAL_AUTOPLAY_KEY = "micro-digital-twin:tutorial-autoplayed:v1";
+function claimFirstAccessAutoplay(): boolean {
+  try {
+    if (localStorage.getItem(TUTORIAL_AUTOPLAY_KEY) === "1") return false;
+    localStorage.setItem(TUTORIAL_AUTOPLAY_KEY, "1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 type WebKitVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
 type WebKitElement = HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
 type WebKitDocument = Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => Promise<void> | void };
@@ -58,13 +70,14 @@ export function HomeVideos() {
   const selectedRef = useRef<VideoKind | null>(null);
   // Fullscreen and the slide/dialog mount the player in different places, so the position carries over.
   const resumeRef = useRef<{ kind: VideoKind; time: number }>({ kind: "promo", time: 0 });
-  // Tablet and desktop: the tutorial starts by itself inside the page, muted as browsers
-  // require for autoplay. Phones never autoplay: the user picks a video and it opens fullscreen.
+  // Tablet and desktop: on the first app access the tutorial starts by itself inside the page.
+  // Phones never autoplay: the user picks a video and it opens fullscreen.
   useEffect(() => {
     const phoneLayout = Math.min(window.innerWidth, window.innerHeight) < 600;
     setPhone(phoneLayout);
     phoneRef.current = phoneLayout;
     if (phoneLayout || new URLSearchParams(location.search).has("scenario")) return;
+    if (!claimFirstAccessAutoplay()) return;
     selectedRef.current = "tutorial";
     resumeRef.current = { kind: "tutorial", time: 0 };
     setAutoStarted(true);
@@ -152,8 +165,7 @@ export function HomeVideos() {
 
 function VideoPlayer({ kind, onClose, fullscreen, onExpand, playerRef, startAt = 0, onProgress, autoStart = false }: { kind: VideoKind; autoStart?: boolean; onClose: () => void; fullscreen: boolean; onExpand?: (() => void) | undefined; playerRef: RefObject<HTMLDivElement | null>; startAt?: number; onProgress?: (time: number) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  // Autoplay without a user gesture is only allowed muted; the volume button turns sound on.
-  const [muted, setMuted] = useState(autoStart);
+  const [muted, setMuted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -174,13 +186,42 @@ function VideoPlayer({ kind, onClose, fullscreen, onExpand, playerRef, startAt =
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = autoStart;
     video.volume = 1;
-    void video.play().catch(() => { setLoading(false); setPlaying(false); });
+    const start = (withSound: boolean) => {
+      video.muted = !withSound;
+      setMuted(!withSound);
+      return video.play();
+    };
+    let stopUnlock = () => {};
+    // Always try with sound. When a browser blocks audible autoplay, play muted instead
+    // and turn the sound on at the first tap, click or key press anywhere on the page.
+    void start(true).catch((error: unknown) => {
+      if (!autoStart || (error as { name?: string } | null)?.name !== "NotAllowedError") {
+        setLoading(false);
+        setPlaying(false);
+        return;
+      }
+      const events = ["pointerdown", "touchstart", "keydown"] as const;
+      const unlock = () => {
+        stopUnlock();
+        video.muted = false;
+        setMuted(false);
+        void video.play().catch(() => {});
+      };
+      for (const name of events) window.addEventListener(name, unlock, { capture: true });
+      stopUnlock = () => { for (const name of events) window.removeEventListener(name, unlock, { capture: true }); };
+      void start(false).catch(() => { setLoading(false); setPlaying(false); });
+    });
     return () => {
+      stopUnlock();
       video.pause();
     };
   }, []);
+  const toggleMuted = () => {
+    const next = !muted;
+    if (videoRef.current) videoRef.current.muted = next;
+    setMuted(next);
+  };
   const controlsHidden = touch && !controlsVisible;
   return <div ref={playerRef} className="home-video-player" data-kind={kind} data-paused={!playing && !loading ? "" : undefined} data-controls-hidden={controlsHidden ? "" : undefined}
     onTouchStart={(event) => {
@@ -212,6 +253,7 @@ function VideoPlayer({ kind, onClose, fullscreen, onExpand, playerRef, startAt =
       {/* With <source> children a missing file fires error on the last source, not on <video>. */}
       <source src={kind === "promo" ? promoWebm.url : tutorialWebm.url} type="video/webm" onError={() => { setLoading(false); setError(true); }} />
     </video>
+    {muted && autoStart && <Button className="home-video-unmute" size="sm" onClick={toggleMuted}><Volume2 />Tocca per l'audio</Button>}
     <div className="home-video-toolbar">
         <Button variant="ghost" size="icon" aria-label="Chiudi video" title="Chiudi video" onClick={onClose}><X /></Button>
     </div>
@@ -219,7 +261,7 @@ function VideoPlayer({ kind, onClose, fullscreen, onExpand, playerRef, startAt =
         <Button variant="ghost" size="icon" disabled={error} aria-label={playing ? "Pausa" : "Riproduci"} title={playing ? "Pausa" : "Riproduci"} onClick={() => { const video = videoRef.current; if (!video) return; if (video.paused) void video.play().catch(() => {}); else video.pause(); }}>{playing ? <Pause /> : <Play />}</Button>
         <span className="home-video-time">{formatTime(time)} / {formatTime(duration)}</span>
         <input className="home-video-seek" type="range" aria-label="Avanzamento video" min={0} max={duration || 1} step={0.1} value={time} disabled={!duration} onChange={(event) => { const video = videoRef.current; if (!video) return; video.currentTime = Number(event.target.value); setTime(video.currentTime); }} />
-        <Button variant="ghost" size="icon" aria-label={muted ? "Attiva audio" : "Disattiva audio"} title={muted ? "Attiva audio" : "Disattiva audio"} onClick={() => setMuted(!muted)}>{muted ? <VolumeX /> : <Volume2 />}</Button>
+        <Button variant="ghost" size="icon" aria-label={muted ? "Attiva audio" : "Disattiva audio"} title={muted ? "Attiva audio" : "Disattiva audio"} onClick={toggleMuted}>{muted ? <VolumeX /> : <Volume2 />}</Button>
         {!fullscreen && onExpand && <Button variant="ghost" size="icon" aria-label="Espandi video" title="Espandi video" onClick={onExpand}><Maximize /></Button>}
     </div>
     {loading && !error && <div className="home-video-status" role="status"><LoaderCircle className="size-7 animate-spin motion-reduce:animate-none" /><span>Caricamento video…</span></div>}

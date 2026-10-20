@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { ThemeToggle } from "@/views/theme-toggle";
 import { AccountControl } from "@/views/account-control";
 import { TwinMascot } from "@/views/TwinMascot";
@@ -63,7 +65,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/favicon.png", type: "image/png" },
+      { rel: "icon", href: "/favicon.ico", sizes: "any" },
+      { rel: "icon", href: "/favicon.png", type: "image/png", sizes: "64x64" },
       { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -314,6 +317,27 @@ function RootComponent() {
     const landed = window as typeof window & { __mdtLanded?: boolean };
     if (landed.__mdtLanded) return;
     landed.__mdtLanded = true;
+    // Back from Google, an email confirmation or a password-recovery link: turn the
+    // one-time ?code= into a session first, then clean the URL. Cleaning it earlier
+    // (the redirects below) would drop the code and leave the user signed out.
+    const query = new URLSearchParams(window.location.search);
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const code = query.get("code");
+    const authError = query.get("error_description") ?? fragment.get("error_description");
+    if (code || authError) {
+      void (async () => {
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) toast.error(`Accesso non riuscito: ${error.message}`);
+        } else {
+          toast.error(`Accesso non riuscito: ${authError}`);
+        }
+        const back = sessionStorage.getItem("mdt-auth-return");
+        sessionStorage.removeItem("mdt-auth-return");
+        void navigate({ href: back ?? window.location.pathname, replace: true });
+      })();
+      return;
+    }
     // A fresh open of the app always lands on the Panoramica (/). This effect
     // runs once per document load, so only the opening page redirects; in-app
     // navigation to /lab, /dashboard, ... keeps working as before.

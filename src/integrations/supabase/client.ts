@@ -25,7 +25,8 @@ function createSupabaseClient() {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      // The root route exchanges ?code= itself before it cleans the URL (see __root.tsx).
+      detectSessionInUrl: false,
       flowType: 'pkce',
     },
   });

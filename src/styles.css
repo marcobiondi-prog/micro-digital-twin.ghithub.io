@@ -1666,6 +1666,8 @@ html[data-home-video] .home-video-player[data-kind="promo"] video { object-fit: 
 .home-video-status { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; pointer-events: none; }
 .home-video-status button { pointer-events: auto; }
 .home-video-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+/* Shown while the browser forces muted autoplay; any tap on the page also turns sound on. */
+.home-video-unmute { position: absolute; top: max(.75rem, env(safe-area-inset-top)); left: max(.75rem, env(safe-area-inset-left)); z-index: 1; border-radius: 999px; background: var(--camera-glass); color: var(--camera-ink); border: 1px solid var(--camera-border); backdrop-filter: blur(18px); }
 .home-video-overlay { background: var(--camera-glass); backdrop-filter: blur(16px); }
 .home-video-dialog { display: block; width: min(1100px, calc(100vw - 3rem)); max-width: none; height: auto; aspect-ratio: 16 / 9; padding: 0; gap: 0; overflow: hidden; border-color: var(--camera-border); background: var(--camera-surface); }
 .home-video-dialog > button { display: none; }

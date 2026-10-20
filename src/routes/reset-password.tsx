@@ -23,19 +23,22 @@ function ResetPassword() {
   const [pending, setPending] = useState(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.slice(1));
-    if (params.get("type") !== "recovery") { setMessage("Link di recupero non valido o scaduto."); return; }
     const token = params.get("access_token");
     const refresh = params.get("refresh_token");
-    if (token && refresh) {
+    if (params.get("type") === "recovery" && token && refresh) {
       void supabase.auth.setSession({ access_token: token, refresh_token: refresh }).then(({ error }) => {
         if (error) setMessage("Link di recupero non valido o scaduto.");
         else { setValid(true); window.history.replaceState(null, "", window.location.pathname); }
       });
-    } else {
-      void supabase.auth.getSession().then(({ data }) => {
-        if (data.session) setValid(true); else setMessage("Link di recupero non valido o scaduto.");
-      });
+      return;
     }
+    // Recovery links carry ?code=, which the root route exchanges for a session: wait for it.
+    let ready = false;
+    const accept = () => { ready = true; setValid(true); setMessage(""); };
+    void supabase.auth.getSession().then(({ data }) => { if (data.session) accept(); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { if (session) accept(); });
+    const timer = window.setTimeout(() => { if (!ready) setMessage("Link di recupero non valido o scaduto."); }, 8000);
+    return () => { subscription.unsubscribe(); window.clearTimeout(timer); };
   }, []);
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setPending(true);
