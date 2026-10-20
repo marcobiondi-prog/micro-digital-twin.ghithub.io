@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cameraViewport, groundTilt, isGroundPoint, prepareArOrientation, setArOrientationActive, shortestRotationDelta, syncAppOrientation } from "@/lib/ar-orientation";
+import { cameraViewport, groundTilt, isGroundPoint, prepareArOrientation, setArOrientationActive, setHomeVideoLandscape, shortestRotationDelta, syncAppOrientation } from "@/lib/ar-orientation";
 import { readFileSync } from "node:fs";
 
 describe("App portrait policy", () => {
   afterEach(() => vi.unstubAllGlobals());
   function setup(width = 411, height = 775) {
-    let active = false;
-    let videoActive = false;
+    const attributes = new Set<string>();
     const lock = vi.fn().mockResolvedValue(undefined);
     const unlock = vi.fn();
     vi.stubGlobal("screen", { width, height, orientation: { lock, unlock } });
@@ -15,8 +14,8 @@ describe("App portrait policy", () => {
     const exitFullscreen = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("document", { exitFullscreen, documentElement: {
       requestFullscreen,
-      hasAttribute: (name: string) => name === "data-ar-camera" ? active : videoActive,
-      toggleAttribute: (name: string, value: boolean) => { if (name === "data-ar-camera") active = value; else videoActive = value; },
+      hasAttribute: (name: string) => attributes.has(name),
+      toggleAttribute: (name: string, value: boolean) => { if (value) attributes.add(name); else attributes.delete(name); },
     } });
     vi.stubGlobal("window", { dispatchEvent: vi.fn() });
     return { lock, unlock, requestFullscreen, exitFullscreen };
@@ -31,14 +30,15 @@ describe("App portrait policy", () => {
     await syncAppOrientation();
     expect(lock).toHaveBeenLastCalledWith("portrait-primary");
   });
-  it("keeps the portrait lock while a home video plays, so no system rotation happens", async () => {
+  it("turns a phone home video landscape and restores portrait when it closes", async () => {
     const { lock, unlock } = setup();
-    document.documentElement.toggleAttribute("data-home-video", true);
+    setHomeVideoLandscape(true);
     await syncAppOrientation();
-    expect(lock).not.toHaveBeenCalledWith("landscape");
+    expect(lock).toHaveBeenLastCalledWith("landscape");
+    setHomeVideoLandscape(false);
+    await syncAppOrientation();
     expect(lock).toHaveBeenLastCalledWith("portrait-primary");
     expect(unlock).not.toHaveBeenCalled();
-    document.documentElement.toggleAttribute("data-home-video", false);
   });
   it("allows any orientation in AI camera and restores portrait on close", async () => {
     const { lock, unlock } = setup();

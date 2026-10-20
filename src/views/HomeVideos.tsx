@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { Film, Play, Pause, Maximize, Volume2, VolumeX, X, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { syncAppOrientation } from "@/lib/ar-orientation";
+import { setHomeVideoLandscape, syncAppOrientation } from "@/lib/ar-orientation";
 // Static files served from public/videos (see public/videos/LEGGIMI.txt).
 const promo = { url: "/videos/promo.mp4" };
 const tutorial = { url: "/videos/tutorial.mp4" };
@@ -35,10 +35,23 @@ function enterPlayerFullscreen(player: HTMLElement | null) {
   } catch { nativeFullscreen(); }
 }
 
+/** Phone: real browser fullscreen turned landscape. Where either is refused (iPhone Safari,
+ * some WebViews) the edge-to-edge dialog still draws the video landscape via CSS. */
+function enterPhoneFullscreen(player: HTMLElement | null) {
+  setHomeVideoLandscape(true);
+  if (!player) return;
+  try {
+    const target = player as WebKitElement & { requestFullscreen?: (options?: FullscreenOptions) => Promise<void> };
+    if (target.requestFullscreen) void target.requestFullscreen({ navigationUI: "hide" }).then(() => syncAppOrientation()).catch(() => {});
+    else void Promise.resolve(target.webkitRequestFullscreen?.()).then(() => syncAppOrientation()).catch(() => {});
+  } catch { /* CSS landscape fallback. */ }
+}
+
 export function HomeVideos() {
   const [selected, setSelected] = useState<VideoKind | null>(null);
   // Phones (short side < 600 px) play edge-to-edge; tablets and desktops play inside the page.
   const [phone, setPhone] = useState(false);
+  const phoneRef = useRef(false);
   const [autoStarted, setAutoStarted] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
@@ -50,6 +63,7 @@ export function HomeVideos() {
   useEffect(() => {
     const phoneLayout = Math.min(window.innerWidth, window.innerHeight) < 600;
     setPhone(phoneLayout);
+    phoneRef.current = phoneLayout;
     if (phoneLayout || new URLSearchParams(location.search).has("scenario")) return;
     selectedRef.current = "tutorial";
     resumeRef.current = { kind: "tutorial", time: 0 };
@@ -64,19 +78,24 @@ export function HomeVideos() {
     setAutoStarted(false);
     // Reopening a closed video starts from the beginning again.
     resumeRef.current = { kind: resumeRef.current.kind, time: 0 };
+    if (phoneRef.current) setHomeVideoLandscape(false);
     const doc = document as WebKitDocument;
     if (player && (doc.fullscreenElement ?? doc.webkitFullscreenElement) === player) {
       try { void Promise.resolve((doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc)).catch(() => {}); } catch { /* Already exited. */ }
     }
     flushSync(() => setSelected(null));
   };
-  // Leaving fullscreen shrinks back to the slide/dialog; hosts that drop fullscreen instantly keep playing.
+  // Tablet/desktop: leaving fullscreen shrinks back to the slide. Phone: leaving fullscreen
+  // (back gesture or system UI) closes the video and restores portrait.
   useEffect(() => {
+    let wasActive = false;
     const onChange = () => {
       const doc = document as WebKitDocument;
       const active = playerRef.current !== null && (doc.fullscreenElement ?? doc.webkitFullscreenElement) === playerRef.current;
       setFullscreen(active);
       if (active) void syncAppOrientation();
+      else if (wasActive && phoneRef.current && selectedRef.current) close();
+      wasActive = active;
     };
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
@@ -93,10 +112,10 @@ export function HomeVideos() {
     selectedRef.current = kind;
     setAutoStarted(false);
     if (phone) {
-      // Like the AI camera: edge-to-edge without browser fullscreen, so no
-      // security banner and no system rotation; CSS draws the video landscape.
+      // Phone: the user picked the video, so open it fullscreen and landscape within this tap.
       document.documentElement.setAttribute("data-home-video", "");
       flushSync(() => setSelected(kind));
+      enterPhoneFullscreen(playerRef.current);
       return;
     }
     // Tablet/desktop: the video stays in its hero slide and never enters browser fullscreen.
@@ -113,7 +132,7 @@ export function HomeVideos() {
       document.documentElement.removeAttribute("data-home-video");
     };
   }, [phone, selected]);
-  // Phone players already fill the screen; tablet/desktop offer browser fullscreen on request.
+  // Phone players are already fullscreen; tablet/desktop offer browser fullscreen on request.
   const expand = phone ? undefined : () => enterPlayerFullscreen(playerRef.current);
   return <div className="home-videos">
     <div className="home-video-buttons flex flex-wrap items-center gap-2">

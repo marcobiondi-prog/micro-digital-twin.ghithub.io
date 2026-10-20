@@ -6,14 +6,14 @@ export async function prepareArOrientation(): Promise<void> {
 /** Native orientation policy shared by the app shell and camera lifecycle. */
 export async function syncAppOrientation(): Promise<void> {
   const active = document.documentElement.hasAttribute("data-ar-camera");
+  const videoLandscape = document.documentElement.hasAttribute("data-home-video-landscape");
   const mobile = navigator.maxTouchPoints > 0 || Math.min(screen.width, screen.height) <= 639;
   if (!active && !mobile) return;
   const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
   if (!orientation) return;
   try {
-    // AR rotates freely. Home videos keep the portrait lock: their surface is drawn
-    // landscape by CSS, so opening/closing never triggers a system rotation.
-    await orientation.lock?.(active ? "any" : "portrait-primary");
+    // AR rotates freely; a phone home video turns the screen landscape; otherwise portrait.
+    await orientation.lock?.(active ? "any" : videoLandscape ? "landscape" : "portrait-primary");
     // A portrait request already in flight must not relock a newly opened camera.
     if (active !== document.documentElement.hasAttribute("data-ar-camera")) {
       await syncAppOrientation();
@@ -24,6 +24,12 @@ export async function syncAppOrientation(): Promise<void> {
       try { orientation.unlock(); } catch { /* Unsupported host. */ }
     }
   }
+}
+
+/** Phone home videos play landscape; hosts that refuse the lock fall back to the CSS-rotated surface. */
+export function setHomeVideoLandscape(active: boolean) {
+  document.documentElement.toggleAttribute("data-home-video-landscape", active);
+  void syncAppOrientation();
 }
 
 /** Camera-only exception to the app's portrait lock. */
