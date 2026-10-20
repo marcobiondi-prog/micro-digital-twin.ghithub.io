@@ -1,0 +1,305 @@
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { LogOut, Settings2, UserRound, Mail, LockKeyhole, Camera, ShieldCheck } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { getMyAdminStatus } from "@/controllers/admin.functions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ThemeToggle } from "@/views/theme-toggle";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import seedling from "@/assets/avatar-seedling.svg";
+import city from "@/assets/avatar-city.svg";
+import sun from "@/assets/avatar-sun.svg";
+import vine from "@/assets/avatar-vine.svg";
+
+const suggestions = [
+  { id: "seedling", label: "Germoglio", src: seedling },
+  { id: "city", label: "Città", src: city },
+  { id: "sun", label: "Sole", src: sun },
+  { id: "vine", label: "Vigneto", src: vine },
+] as const;
+type Choice = (typeof suggestions)[number]["id"] | "upload";
+type Account = { email: string; guest: boolean; id?: string; googleAvatar?: string } | null;
+const guestKey = "micro-digital-twin-guest";
+const pendingAvatarKey = "micro-digital-twin-pending-avatar";
+const bucket = "account-avatars";
+
+// Supabase Auth messages are English and terse; explain the common ones.
+function authMessage(error: { code?: string | undefined; message: string }) {
+  switch (error.code) {
+    case "invalid_credentials": return "Email o password non corretti. Se non hai ancora un account, registrati.";
+    case "email_not_confirmed": return "Devi prima confermare l'email: apri il link che ti abbiamo inviato.";
+    case "user_already_exists": return "Esiste già un account con questa email. Accedi oppure reimposta la password.";
+    case "weak_password": return "Password troppo debole: usa almeno 6 caratteri.";
+    case "over_email_send_rate_limit": return "Troppe email inviate. Riprova più tardi.";
+    case "email_address_not_authorized": return "Il servizio email non può scrivere a questo indirizzo. L'amministratore deve configurare l'invio email.";
+    case "email_address_invalid": return "Indirizzo email non valido.";
+    case "signup_disabled": return "Le registrazioni sono disattivate.";
+    default: return /sending confirmation email/i.test(error.message) ? "Invio dell'email di conferma non riuscito. L'amministratore deve configurare l'invio email." : error.message;
+  }
+}
+
+export function AccountControl() {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [account, setAccount] = useState<Account>(null);
+  const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [choice, setChoice] = useState<Choice | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [draftPreview, setDraftPreview] = useState<string | null>(null);
+  const draftFileRef = useRef<File | null>(null);
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  // Only offer Google when the provider is enabled in Supabase; otherwise it opens a raw error page.
+  useEffect(() => {
+    const url = import.meta.env["VITE_SUPABASE_URL"];
+    const key = import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
+    if (!url || !key) return;
+    fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s: { external?: { google?: boolean } } | null) => setGoogleEnabled(Boolean(s?.external?.google)))
+      .catch(() => setGoogleEnabled(false));
+  }, []);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+
+  const saveAvatar = useCallback(async (userId: string, selected: Choice, file?: File | null) => {
+    let path: string | null = null;
+    if (selected === "upload") {
+      if (!file) throw new Error("Scegli un'immagine prima di salvare.");
+      const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+      path = `${userId}/${crypto.randomUUID()}.${extension}`;
+      const { error } = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type });
+      if (error) throw error;
+    }
+    const { data: previous } = await supabase.from("profiles").select("avatar_path").eq("user_id", userId).maybeSingle();
+    const { error } = await supabase.from("profiles").upsert({ user_id: userId, avatar_choice: selected, avatar_path: path });
+    if (error) {
+      if (path) await supabase.storage.from(bucket).remove([path]);
+      throw error;
+    }
+    if (previous?.avatar_path && previous.avatar_path !== path) {
+      await supabase.storage.from(bucket).remove([previous.avatar_path]);
+    }
+    if (path) {
+      const { data, error: urlError } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+      if (urlError) throw urlError;
+      setAvatarUrl(data.signedUrl);
+    } else setAvatarUrl(null);
+    setChoice(selected);
+    draftFileRef.current = null;
+    setDraftPreview(null);
+    sessionStorage.removeItem(pendingAvatarKey);
+  }, []);
+
+  const selectAvatar = async (selected: Choice, file?: File) => {
+    if (savingAvatar) return;
+    setNotice("");
+    if (account?.id) {
+      setSavingAvatar(true);
+      try { await saveAvatar(account.id, selected, file); }
+      catch { setNotice("Non è stato possibile salvare l'immagine. Riprova."); }
+      finally { setSavingAvatar(false); }
+    } else {
+      setChoice(selected);
+      draftFileRef.current = file ?? null;
+      setDraftPreview((old) => { if (old) URL.revokeObjectURL(old); return file ? URL.createObjectURL(file) : null; });
+      // Presets survive the email confirmation or Google redirect.
+      if (selected !== "upload") sessionStorage.setItem(pendingAvatarKey, selected);
+      else sessionStorage.removeItem(pendingAvatarKey);
+    }
+  };
+
+  const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setNotice("Scegli un'immagine JPG, PNG o WebP fino a 2 MB.");
+      return;
+    }
+    void selectAvatar("upload", file);
+  };
+
+  const placePanel = useCallback((element: HTMLDivElement | null) => {
+    if (!element || !triggerRef.current || !window.matchMedia("(max-width: 639px)").matches) return;
+    const trigger = triggerRef.current.getBoundingClientRect();
+    const panel = element.getBoundingClientRect();
+    element.style.setProperty("--account-x", `${trigger.left + trigger.width / 2 - panel.left}px`);
+    element.style.setProperty("--account-y", `${trigger.top + trigger.height / 2 - panel.top}px`);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadUser = async (user: { id: string; email?: string; app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> } | null) => {
+      if (!active) return;
+      if (!user) {
+        setAccount(sessionStorage.getItem(guestKey) ? { email: "Ospite", guest: true } : null);
+        setIsAdmin(false);
+        setAvatarUrl(null);
+        return;
+      }
+      sessionStorage.removeItem(guestKey);
+      const googleAvatar = typeof user.user_metadata?.['avatar_url'] === "string" ? user.user_metadata['avatar_url'] : typeof user.user_metadata?.['picture'] === "string" ? user.user_metadata['picture'] : undefined;
+      setAccount({ id: user.id, email: user.email ?? "Account", guest: false, ...(user.app_metadata?.['provider'] === "google" && googleAvatar ? { googleAvatar } : {}) });
+      void getMyAdminStatus().then((r) => { if (active) setIsAdmin(r.isAdmin); }, () => { if (active) setIsAdmin(false); });
+      const { data: profile } = await supabase.from("profiles").select("avatar_choice, avatar_path").eq("user_id", user.id).maybeSingle();
+      if (!active) return;
+      if (profile?.avatar_choice) setChoice(profile.avatar_choice as Choice);
+      else setChoice(null);
+      if (profile?.avatar_path) {
+        const { data } = await supabase.storage.from(bucket).createSignedUrl(profile.avatar_path, 3600);
+        if (active) setAvatarUrl(data?.signedUrl ?? null);
+      } else setAvatarUrl(null);
+      const pending = sessionStorage.getItem(pendingAvatarKey);
+      const selected = draftFileRef.current ? "upload" : (pending && suggestions.some((item) => item.id === pending) ? pending as Choice : null);
+      if (selected) {
+        try { await saveAvatar(user.id, selected, draftFileRef.current); }
+        catch { if (active) setNotice("Non è stato possibile salvare l'immagine. Riprova."); }
+      }
+    };
+    void supabase.auth.getUser().then(({ data }) => void loadUser(data.user));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Run database reads outside the auth callback to avoid auth-lock contention.
+      setTimeout(() => { if (active) void loadUser(session?.user ?? null); }, 0);
+    });
+    return () => { active = false; subscription.unsubscribe(); };
+  }, [saveAvatar]);
+
+  const enterGuest = () => {
+    sessionStorage.setItem(guestKey, "1");
+    setAccount({ email: "Ospite", guest: true });
+    setNotice("");
+  };
+
+  const signOut = async () => {
+    setPending(true);
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    if (!account?.guest) {
+      const { error } = await supabase.auth.signOut();
+      if (error) { setNotice(error.message); setPending(false); return; }
+    }
+    sessionStorage.removeItem(guestKey);
+    sessionStorage.removeItem(pendingAvatarKey);
+    setAccount(null);
+    setChoice(null);
+    setAvatarUrl(null);
+    draftFileRef.current = null;
+    setDraftPreview(null);
+    setOpen(false);
+    setPending(false);
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setNotice("");
+    setPending(true);
+    try {
+      if (mode === "reset") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
+        setNotice(error ? authMessage(error) : "Se l'indirizzo è registrato, riceverai un link per reimpostare la password.");
+      } else if (mode === "signup") {
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
+        // With email confirmation off Supabase signs the user in right away.
+        if (error) setNotice(authMessage(error));
+        else if (data.session) { setPassword(""); setNotice(""); }
+        // An existing confirmed email returns a user without identities instead of an error.
+        else if (data.user && data.user.identities?.length === 0) setNotice(authMessage({ code: "user_already_exists", message: "" }));
+        else setNotice("Controlla la tua email per confermare l'account prima di accedere.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) setNotice(authMessage(error));
+        else { setPassword(""); setNotice(""); }
+      }
+    } catch { setNotice("Impossibile completare l'operazione. Riprova."); }
+    finally { setPending(false); }
+  };
+
+  const googleSignIn = async () => {
+    setPending(true);
+    setNotice("");
+    try {
+      // Remember the current section so the post-login reload stays here.
+      sessionStorage.setItem("mdt-auth-return", window.location.pathname + window.location.search);
+      const result = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + window.location.pathname } });
+      if (result.error) setNotice(result.error.message);
+    } catch { setNotice("Accesso Google non disponibile. Riprova."); }
+    finally { setPending(false); }
+  };
+
+  const changeMode = (next: typeof mode) => { setMode(next); setNotice(""); setPassword(""); };
+
+  const displayedAvatar = (choice === "upload" ? draftPreview ?? avatarUrl : suggestions.find((item) => item.id === choice)?.src ?? account?.googleAvatar) ?? undefined;
+  const avatar = (size: string) => <Avatar className={`${size} border border-border bg-muted`}><AvatarImage src={displayedAvatar} alt="Immagine account" referrerPolicy="no-referrer" className="object-cover" /><AvatarFallback><UserRound className="size-1/2" aria-hidden="true" /></AvatarFallback></Avatar>;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+        <Button ref={triggerRef} variant="outline" size="icon" className="size-9 shrink-0 rounded-full sm:size-10" aria-label="Apri account e impostazioni" title="Account e impostazioni" onClick={() => setOpen(true)}>
+          {avatar("size-9 sm:size-10")}
+        </Button>
+      <DialogContent ref={placePanel} overlayClassName="account-overlay" className="account-panel flex max-h-[min(680px,90dvh)] w-[min(420px,calc(100vw-2rem))] flex-col gap-0 overflow-y-auto rounded-lg border bg-popover p-0 text-popover-foreground shadow-xl sm:rounded-lg">
+        <DialogHeader className="border-b px-6 py-5 text-left">
+          <div className="mb-2">{avatar("size-10")}</div>
+          <DialogTitle className="text-xl">Account</DialogTitle>
+          <DialogDescription>{account ? account.email : "Accedi o continua come ospite."}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6 px-6 py-6">
+          {mode !== "reset" && <section className="space-y-3" aria-label="Immagine account">
+            <div className="flex items-center gap-3">
+              {avatar("size-14")}
+              <div><h3 className="text-sm font-semibold">Immagine account</h3><p className="text-xs text-muted-foreground">{account?.id ? "Scegli un'immagine per il tuo account" : "Scegli un'immagine da usare quando accedi"}</p></div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {suggestions.map((item) => <Button key={item.id} type="button" variant="ghost" size="icon" disabled={savingAvatar} aria-label={`Scegli ${item.label}`} aria-pressed={choice === item.id} title={item.label} className={`size-12 shrink-0 rounded-full p-0.5 ${choice === item.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`} onClick={() => void selectAvatar(item.id)}><img src={item.src} alt="" className="size-full rounded-full" /></Button>)}
+              <Button type="button" variant="outline" size="icon" disabled={savingAvatar} aria-label="Carica immagine account" title="Carica immagine" className="size-12 shrink-0 rounded-full" onClick={() => fileRef.current?.click()}><Camera className="size-5" /></Button>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" tabIndex={-1} aria-label="Seleziona immagine account" onChange={chooseFile} />
+            </div>
+          </section>}
+          {account ? (
+            <section className="space-y-4">
+              <div className="rounded-md border bg-muted/40 p-4">
+                <p className="text-sm font-semibold">{account.guest ? "Sessione ospite" : account.email}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{account.guest ? "Accesso di base su questo dispositivo. Non è un account e non salva dati online." : "Accesso effettuato"}</p>
+              </div>
+              {account.guest && <Button variant="outline" className="w-full" onClick={() => { sessionStorage.removeItem(guestKey); setAccount(null); changeMode("signup"); }}>Crea un account</Button>}
+              {account && notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
+              {isAdmin && <Button asChild variant="outline" className="w-full justify-start"><Link to="/admin" onClick={() => setOpen(false)}><ShieldCheck />Pannello di controllo</Link></Button>}
+              <Button variant="ghost" className="w-full justify-start" disabled={pending} onClick={() => void signOut()}><LogOut />Esci</Button>
+            </section>
+          ) : (
+            <section className="space-y-4">
+              <div className="flex gap-1 border-b" aria-label="Modalità account">
+                <Button variant="ghost" className={`rounded-none border-b-2 px-3 ${mode === "signin" ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`} onClick={() => changeMode("signin")}>Accedi</Button>
+                <Button variant="ghost" className={`rounded-none border-b-2 px-3 ${mode === "signup" ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`} onClick={() => changeMode("signup")}>Registrati</Button>
+              </div>
+              {mode === "reset" && <p className="text-sm font-medium">Reimposta la password</p>}
+              <form className="space-y-4" onSubmit={(event) => void submit(event)}>
+                <div className="space-y-1.5"><Label htmlFor="account-email">Email</Label><div className="relative"><Mail className="absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input id="account-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="pl-9" /></div></div>
+                {mode !== "reset" && <div className="space-y-1.5"><Label htmlFor="account-password">Password</Label><div className="relative"><LockKeyhole className="absolute left-3 top-2.5 size-4 text-muted-foreground" /><Input id="account-password" type="password" minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} required value={password} onChange={(event) => setPassword(event.target.value)} className="pl-9" /></div></div>}
+                {notice && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
+                <Button type="submit" className="w-full" disabled={pending}>{pending ? "Attendi…" : mode === "reset" ? "Invia link" : mode === "signup" ? "Crea account" : "Accedi"}</Button>
+              </form>
+              {mode === "signin" && <Button variant="link" className="h-auto px-0" onClick={() => changeMode("reset")}>Password dimenticata?</Button>}
+              {mode === "reset" && <Button variant="link" className="h-auto px-0" onClick={() => changeMode("signin")}>Torna all'accesso</Button>}
+              {mode !== "reset" && googleEnabled && <><div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />oppure<span className="h-px flex-1 bg-border" /></div><Button variant="outline" className="w-full" disabled={pending} onClick={() => void googleSignIn()}>Continua con Google</Button></>}
+              <Button variant="ghost" className="w-full" onClick={enterGuest}>Continua come ospite</Button>
+            </section>
+          )}
+          <section className="border-t pt-5">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Settings2 className="size-4" />Impostazioni</h3>
+            <div className="flex items-center justify-between rounded-md border px-3 py-2"><span className="text-sm">Aspetto</span><ThemeToggle /></div>
+          </section>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

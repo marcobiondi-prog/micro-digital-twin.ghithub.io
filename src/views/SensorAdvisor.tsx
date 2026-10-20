@@ -1,0 +1,89 @@
+import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { ChevronDown, Radar, Thermometer } from "lucide-react";
+import { Card } from "@/views/health";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { suggestHeatSensors, type NetworkSummary, type SensorPick } from "@/controllers/sensor-ai.functions";
+import { useLab } from "@/models/lab-store";
+
+const tone: Record<string, string> = { alta: "bg-danger/15 text-danger", media: "bg-warn/15 text-warn", bassa: "bg-ok/15 text-ok" };
+
+export function SensorAdvisor({ kind }: { kind: "urban" | "vineyard" }) {
+  const suggest = useServerFn(suggestHeatSensors);
+  const lab = useLab();
+  const location = kind === "urban" ? lab.urban.location : lab.vineyard.location;
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ sintesi: string; sensori: SensorPick[]; network: NetworkSummary } | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSignedIn(!!data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSignedIn(!!s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+  useEffect(() => { setResult(null); setError(null); }, [kind, location.lat, location.lng]);
+
+  const run = async () => {
+    if (loading) return;
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const r = await suggest({ data: { kind, label: location.label, lat: location.lat, lng: location.lng } });
+      if ("error" in r && r.error) setError(r.error);
+      else if ("sensori" in r && r.network) setResult({ sintesi: r.sintesi ?? "", sensori: r.sensori ?? [], network: r.network });
+    } catch { setError("Impossibile contattare il servizio AI. Verifica di aver effettuato l’accesso."); }
+    finally { setLoading(false); }
+  };
+
+  if (signedIn !== true) return null;
+
+  return (
+    <Card className="border p-3 sm:p-5">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`sensor-panel-${kind}`}
+        onClick={() => setOpen((o) => !o)}
+        className="lab-media-trigger -m-2 flex w-full items-center justify-between gap-3 rounded-lg p-2 text-left"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold"><Radar className="size-4 shrink-0 text-primary" /> Dove installare sensori di calore</span>
+        <ChevronDown className="lab-media-chevron size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </button>
+      <div id={`sensor-panel-${kind}`} className="lab-media-body" data-open={open} aria-hidden={!open} inert={!open}>
+        <div className="lab-media-inner">
+          <div className="space-y-3">
+      <p className="text-xs text-muted-foreground">L’AI analizza i sensori attivi della rete Sensor.Community e i luoghi sensibili di OpenStreetMap attorno alla zona selezionata. Suggerimenti indicativi.</p>
+          <Button onClick={run} disabled={loading} className="rounded-full">{loading ? "Analisi della rete…" : "Suggerisci posizioni"}</Button>
+          {error && <p role="alert" className="mt-3 rounded-xl bg-danger/10 p-3 text-sm text-danger">{error}</p>}
+          {result && (
+            <div className="mt-4 space-y-2" aria-live="polite">
+              <div className="grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+                <div className="rounded-lg bg-muted p-2"><div className="text-muted-foreground">Sensori attivi</div><div className="font-mono font-semibold">{result.network.sensoriEsistenti}</div></div>
+                <div className="rounded-lg bg-muted p-2"><div className="text-muted-foreground">Temp. media</div><div className="font-mono font-semibold">{result.network.temperaturaMedia != null ? `${result.network.temperaturaMedia}°C` : "—"}</div></div>
+                <div className="rounded-lg bg-muted p-2"><div className="text-muted-foreground">Luoghi sensibili</div><div className="font-mono font-semibold">{result.network.puntiSensibili}</div></div>
+                <div className="rounded-lg bg-muted p-2"><div className="text-muted-foreground">Fermate bus</div><div className="font-mono font-semibold">{result.network.fermate}</div></div>
+              </div>
+              {result.sintesi && <p className="text-sm text-muted-foreground">{result.sintesi}</p>}
+              {result.sensori.map((s, i) => (
+                <div key={i} className="rounded-xl bg-muted p-3 text-sm">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 font-semibold"><Thermometer className="size-4 shrink-0 text-primary" /><span className="break-words">{s.nome}</span></div>
+                      {s.luogo && <p className="mt-0.5 break-words text-xs text-muted-foreground">{s.luogo}</p>}
+                      <a className="font-mono text-[11px] text-muted-foreground underline" href={`https://www.google.com/maps?q=${s.lat},${s.lng}`} target="_blank" rel="noreferrer">{s.lat.toFixed(5)}, {s.lng.toFixed(5)}</a>
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${tone[s.priorita]}`}>{s.priorita}</span>
+                  </div>
+                  <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">{s.motivi.map((m, k) => <li key={k}>{m}</li>)}</ul>
+                </div>
+              ))}
+            </div>
+          )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}

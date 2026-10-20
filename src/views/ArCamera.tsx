@@ -1,0 +1,1042 @@
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
+import { Activity, ChevronDown, ChevronUp, Flame, Info, Grid2X2, Minus, Plus, ScanSearch, SlidersHorizontal, Trash2, Undo2, X, Zap, ZapOff } from "lucide-react";
+import { supportsCameraTorch, setCameraTorch } from "@/lib/camera-torch";
+import { detectArObject, type Detection, type Soil } from "@/controllers/ar-detect.functions";
+import { findSubject, SEARCH_BOX, smoothBox, type SubjectBox } from "@/lib/ar-subject-tracker";
+import { extractPlantPhoto } from "@/views/ar-plant-photo";
+
+type D = NonNullable<Detection>;
+type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identification: D["identification"] };
+import { type GroundSurvey } from "@/models/ar-recognition";
+import { AR_FOCUS, arFocusOption, defaultArFocus, type ArFocus } from "@/models/ar-focus";
+import type { ArScene } from "@/views/ar-scene";
+import { Button } from "@/components/ui/button";
+import { drawCameraVideo, freezeCameraFrame, paintArFrame } from "@/lib/ar-frame";
+import { startArFrameLoop } from "@/lib/ar-frame-loop";
+import { captureSummaryLines } from "@/models/ar-capture-summary";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { cameraViewport, groundTilt, setArOrientationActive, shortestRotationDelta } from "@/lib/ar-orientation";
+import { CameraCloseGestures } from "@/views/CameraCloseGestures";
+import { tutorialSwipeStep } from "@/lib/ar-tutorial-swipe";
+import { CameraCenterCapture } from "@/views/CameraCenterCapture";
+import { CameraCaptureControl } from "@/views/CameraCaptureControl";
+import { playCameraSound } from "@/lib/camera-sounds";
+import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
+
+type Mode = "photo" | "video";
+type Layer = "heat" | "objects" | "grid";
+const FOCUS_LABELS = { tree: "Vegetazione", ground: "Suolo", leaf: "Foglia", canopy: "Chioma", interrow: "Interfila" };
+
+const URBAN_TUTORIAL = [
+  { title: "1 · Scegli l'obiettivo", text: "In alto scegli «Alberi e ombra» per un albero della piazza o «Suolo e depavimentazione» per la pavimentazione." },
+  { title: "2 · Scansiona", text: "Inquadra chioma e tronco, oppure il suolo davanti a te, e avvia la scansione: specie, ombra e permeabilità." },
+  { title: "3 · Bilancia termica", text: "Usa − / + o trascina la bilancia Caldo/Fresco per simulare più alberi e vedere ombra e gradi percepiti in meno." },
+  { title: "4 · Scatta", text: "Scatta foto o video: la griglia non compare e la stima va nel Lab e nei report della piazza." },
+] as const;
+
+const TUTORIAL = [
+  { title: "1 · Inquadra", text: "Avvicinati a 20–30 cm da una foglia o dalla chioma: il mirino si aggancia da solo alla vegetazione." },
+  { title: "2 · Scansiona", text: "Avvia la scansione: prima la forma della foglia, poi il confronto botanico e la stima del terreno." },
+  { title: "3 · Bilancia termica", text: "Usa − / + o trascina la bilancia Caldo/Fresco per vedere i gradi di raffrescamento e l'ombra." },
+  { title: "4 · Scatta", text: "Scatta foto o video: la griglia non compare e la stima botanico-termica va nel Lab e nei report." },
+] as const;
+
+/**
+ * Fotocamera con realtà aumentata (solo utenti registrati): l'anteprima è disegnata su un canvas
+ * con sopra dati, mappa termica e oggetti posizionati col tocco; foto e video includono gli strati.
+ * Il Dialog resta montato con open controllato dallo stato (StrictMode + useBackClose).
+ */
+export function ArCamera({
+  mode,
+  kind,
+  context,
+  onCapture,
+  onClose,
+  onFallback,
+}: {
+  mode: Mode | null;
+  kind: "urban" | "vineyard";
+  /** Contesto del flusso: scenario urbano o zona/fase vitivinicola, mostrato e salvato col file. */
+  context?: string | undefined;
+  onCapture: (files: File[]) => void;
+  onClose: () => void;
+  onFallback: (mode: Mode) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunks = useRef<Blob[]>([]);
+  const taps = useRef<{ x: number; y: number }[]>([]);
+  const plantedCooling = useRef<PlacementCooling[]>([]);
+  const layersRef = useRef<Set<Layer>>(new Set(["objects"]));
+  const [layers, setLayers] = useState<Set<Layer>>(new Set(["objects"]));
+  const [ready, setReady] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const sceneRef = useRef<ArScene | null>(null);
+  // Composizione del fotogramma: l'anteprima mostra la griglia, lo scatto no.
+  const paintRef = useRef<((showGrid: boolean) => boolean) | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const scanningRef = useRef(false);
+  scanningRef.current = scanning;
+  const scanVersion = useRef(0);
+  const scanBusy = useRef(false);
+  const [found, setFound] = useState<string | null>(null);
+  const [soil, setSoil] = useState<Soil>(null);
+  const [survey, setSurvey] = useState<GroundSurvey | null>(null);
+  const plantPhoto = useRef<HTMLCanvasElement | null>(null);
+  const tutorial = kind === "urban" ? URBAN_TUTORIAL : TUTORIAL;
+  const [target, setTarget] = useState<ArFocus>(() => defaultArFocus(kind));
+  useEffect(() => { setTarget(defaultArFocus(kind)); }, [kind]);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [activeTool, setActiveTool] = useState<"analysis" | "manage" | null>(null);
+  const [species, setSpecies] = useState<SpeciesInfo | null>(null);
+  const [count, setCount] = useState(0);
+  const countRef = useRef(0);
+  // La stima termica si può minimizzare in una barra compatta riapribile.
+  const [thermalMin, setThermalMin] = useState(false);
+  const [thermalInfoOpen, setThermalInfoOpen] = useState(false);
+  const [panelMin, setPanelMin] = useState(false);
+  // L'esito dell'analisi si può chiudere senza perdere i dati: si riapre con un tocco.
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchBusy, setTorchBusy] = useState(false);
+  const [torchError, setTorchError] = useState<string | null>(null);
+  // Only the scanned photographic cutout can be placed; no geometric tree templates.
+
+  const last = useRef<Parameters<ArScene["place"]> | null>(null);
+  // Nessuna schermata di posizionamento: la fotocamera AI resta l'unica vista.
+  const xrActive = false;
+  // Eye tracking del soggetto: il mirino cerca e segue la pianta dal primo fotogramma.
+  const [subject, setSubject] = useState<SubjectBox>(SEARCH_BOX);
+  const [subjectLocked, setSubjectLocked] = useState(false);
+  const [framingHint, setFramingHint] = useState(false);
+  const [swipeHint, setSwipeHint] = useState(false);
+  useEffect(() => {
+    if (!mode || !ready) { setSwipeHint(false); return; }
+    setSwipeHint(true);
+    const timer = window.setTimeout(() => setSwipeHint(false), 4500);
+    return () => window.clearTimeout(timer);
+  }, [mode, ready]);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideStep, setGuideStep] = useState(0);
+  const guideSwipe = useRef<{ id: number; x: number; y: number; rotation: number } | null>(null);
+  const closeGuide = () => {
+    setGuideOpen(false); setGuideStep(0);
+    try { localStorage.setItem((kind === "urban" ? "ar-tutorial-seen-urban" : "ar-tutorial-seen-v2"), "1"); } catch { /* storage non disponibile */ }
+  };
+  useEffect(() => {
+    if (!mode || !ready) return;
+    try { if (!localStorage.getItem((kind === "urban" ? "ar-tutorial-seen-urban" : "ar-tutorial-seen-v2"))) { setGuideStep(0); setGuideOpen(true); } } catch { setGuideOpen(true); }
+  }, [mode, ready]);
+  const [scanPhase, setScanPhase] = useState<"leaf" | "catalogue">("leaf");
+  useEffect(() => {
+    if (!mode || !ready) { setFramingHint(false); return; }
+    setFramingHint(true);
+    const timer = window.setTimeout(() => setFramingHint(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [mode, ready]);
+  useEffect(() => {
+    if (subjectLocked || scanning) setFramingHint(false);
+  }, [subjectLocked, scanning]);
+  useEffect(() => {
+    if (!scanning) { setScanPhase("leaf"); return; }
+    const timer = window.setTimeout(() => setScanPhase("catalogue"), 400);
+    return () => window.clearTimeout(timer);
+  }, [scanning]);
+  const scanStatus = scanPhase === "leaf" ? "Rilevamento morfologia fogliare…" : "Confronto botanico e stima termica…";
+  const toggleTorch = async () => {
+    if (torchBusy || !torchSupported || scanning) return;
+    setTorchBusy(true); setTorchError(null);
+    const next = !torchOn;
+    const enabled = await setCameraTorch(streamRef.current?.getVideoTracks()[0], next);
+    if (enabled) setTorchOn(next);
+    else setTorchError("Impossibile attivare il flash su questo dispositivo.");
+    setTorchBusy(false);
+  };
+  useEffect(() => {
+    if (!mode || !ready) return;
+    const sample = document.createElement("canvas");
+    const g = sample.getContext("2d", { willReadFrequently: true });
+    if (!g) return;
+    let box = SEARCH_BOX;
+    let hits = 0, misses = 0, locked = false;
+    const tick = () => {
+      const video = videoRef.current, view = canvasRef.current;
+      if (document.hidden || scanningRef.current || !video?.videoWidth || !view?.clientWidth) return;
+      const W = 48, H = Math.max(24, Math.round(48 * view.clientHeight / view.clientWidth));
+      if (sample.width !== W || sample.height !== H) { sample.width = W; sample.height = H; }
+      // Stesso ritaglio "a riempimento" dell'anteprima: il mirino coincide con ciò che si vede.
+      drawCameraVideo(g, video, W, H, -rotationRef.current);
+      const found = findSubject(g.getImageData(0, 0, W, H).data, W, H, locked ? box : null);
+      if (found) { hits++; misses = 0; } else { misses++; hits = 0; }
+      if (!locked && hits >= 2) locked = true;
+      if (locked && misses >= 4) locked = false;
+      box = smoothBox(box, found && (locked || hits > 0) ? found : locked ? box : SEARCH_BOX, locked ? 0.45 : 0.3);
+      setSubject(box);
+      setSubjectLocked(locked);
+    };
+    tick();
+    const id = window.setInterval(tick, 110);
+    return () => { window.clearInterval(id); setSubject(SEARCH_BOX); setSubjectLocked(false); };
+  }, [mode, ready]);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const rotationRef = useRef(0);
+  const [viewport, setViewport] = useState({ width: 0, height: 0, rotation: 0, landscape: false });
+  const landscape = viewport.landscape;
+  useEffect(() => {
+    if (!mode) return;
+    let beta: number | null = null, gamma: number | null = null;
+    let current = { width: 0, height: 0, rotation: 0, landscape: false };
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    let transition: { skipTransition: () => void; finished: Promise<void> } | undefined;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => {
+      const rect = surfaceRef.current?.getBoundingClientRect();
+      if (!rect?.width || !rect.height) return;
+      const angle = screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
+      const next = cameraViewport(rect.width, rect.height, angle, beta, gamma, current.rotation);
+      if (next.width === current.width && next.height === current.height && next.rotation === current.rotation) return;
+      const turn = shortestRotationDelta(current.rotation, next.rotation);
+      const animate = current.width > 0 && !reducedMotion.matches && (turn !== 0 || next.landscape !== current.landscape);
+      const apply = () => { rotationRef.current = next.rotation; current = next; setViewport(next); };
+      transition?.skipTransition();
+      if (animate && document.startViewTransition) {
+        document.documentElement.style.setProperty("--ar-rotation-turn", `${turn}deg`);
+        transition = document.startViewTransition(() => flushSync(apply));
+        void transition.finished.catch(() => { /* Rapid turns may skip snapshots. */ });
+      } else {
+        apply();
+        if (animate) surfaceRef.current?.animate([
+          { opacity: 0.8, transform: "scale(1.035)" },
+          { opacity: 1, transform: "scale(1)" },
+        ], { duration: 360, easing: "cubic-bezier(0.2, 0, 0, 1)" });
+      }
+    };
+    const onDevice = (event: DeviceOrientationEvent) => {
+      beta = event.beta; gamma = event.gamma;
+      if (settleTimer === undefined) settleTimer = setTimeout(() => { settleTimer = undefined; sync(); }, 120);
+    };
+    const observer = new ResizeObserver(sync);
+    const onResize = () => {
+      sync();
+      clearTimeout(resizeTimer);
+      // Mobile viewport units/dialog bounds may settle after the resize event.
+      resizeTimer = setTimeout(sync, 180);
+    };
+    if (surfaceRef.current) observer.observe(surfaceRef.current);
+    sync();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    screen.orientation?.addEventListener("change", onResize);
+    window.addEventListener("deviceorientation", onDevice);
+    window.addEventListener("deviceorientationabsolute", onDevice as EventListener);
+    return () => {
+      observer.disconnect();
+      clearTimeout(settleTimer);
+      clearTimeout(resizeTimer);
+      transition?.skipTransition();
+      document.documentElement.style.removeProperty("--ar-rotation-turn");
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      screen.orientation?.removeEventListener("change", onResize);
+      window.removeEventListener("deviceorientation", onDevice);
+      window.removeEventListener("deviceorientationabsolute", onDevice as EventListener);
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    layersRef.current = layers;
+  }, [layers]);
+
+  useEffect(() => {
+    if (!mode) return;
+    setArOrientationActive(true);
+    return () => setArOrientationActive(false);
+  }, [mode]);
+
+  useEffect(() => {
+    if (!mode) return;
+    // Android Back first leaves native fullscreen without firing popstate.
+    // Close the camera too, so no intermediate camera window remains visible.
+    let wasFullscreen = Boolean(document.fullscreenElement);
+    const onFullscreenChange = () => {
+      const fullscreen = Boolean(document.fullscreenElement);
+      if (wasFullscreen && !fullscreen) onClose();
+      wasFullscreen = fullscreen;
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, [mode, onClose]);
+
+  useEffect(() => {
+    if (!mode) return;
+    let cancelled = false;
+    let stopFrameLoop: (() => void) | undefined;
+    let previewReady = false;
+    scanVersion.current += 1;
+    scanBusy.current = false;
+    setScanning(false);
+    setError(null);
+    setReady(false);
+    setTorchSupported(false); setTorchOn(false); setTorchBusy(false); setTorchError(null);
+    setRecording(false);
+    taps.current = [];
+    plantedCooling.current = [];
+    countRef.current = 0;
+    setCount(0);
+    setPanelMin(false);
+    setThermalMin(false);
+
+    last.current = null;
+    setFound(null);
+    setSoil(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
+    setSpecies(null);
+    setPanelOpen(true);
+    setToolsOpen(false); setActiveTool(null);
+    setLayers(new Set(["objects"]));
+    void import("@/views/ar-scene").then((m) => {
+      if (!cancelled) sceneRef.current = m.createArScene();
+    }).catch(() => {
+      if (!cancelled) setError("Anteprima AR non disponibile su questo dispositivo.");
+    });
+    // Riconoscimento del terreno: il piano della griglia segue l'inclinazione reale del telefono.
+    // Inclinazione corretta anche in orizzontale: gli assi beta/gamma ruotano con lo schermo,
+    // quindi li riallineiamo all'angolo di orientamento prima di inclinare la griglia.
+    // Ancoraggio al movimento: il primo orientamento letto fa da riferimento; gli oggetti
+    // scansionati restano fermi sul loro punto mentre il telefono ruota attorno ad esso.
+    let baseAlpha: number | null = null;
+    let baseBeta: number | null = null;
+    const onTilt = (ev: DeviceOrientationEvent) => {
+      if (ev.beta == null) return;
+      const angle = rotationRef.current || (window.screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0);
+      const { beta, gamma } = groundTilt(ev.beta, ev.gamma ?? 0, angle);
+      // Alcuni WebView non espongono alpha: usiamo la bussola di Safari come riserva.
+      const alpha = ev.alpha ?? (ev as unknown as { webkitCompassHeading?: number }).webkitCompassHeading ?? null;
+      if (alpha != null) {
+        if (baseAlpha == null) { baseAlpha = alpha; baseBeta = beta; }
+        let yaw = alpha - baseAlpha;
+        if (yaw > 180) yaw -= 360;
+        if (yaw < -180) yaw += 360;
+        sceneRef.current?.setMotion(yaw, beta - (baseBeta ?? beta) + 90);
+      } else {
+        sceneRef.current?.setTilt(beta, gamma);
+      }
+    };
+    // iOS concede il giroscopio solo dopo un tocco dell'utente: la richiesta al mount viene
+    // rifiutata in silenzio, quindi la ripetiamo al primo contatto con lo schermo.
+    const DOE = window.DeviceOrientationEvent as unknown as
+      | { requestPermission?: () => Promise<string> }
+      | undefined;
+    const askTiltPermission = () => {
+      if (DOE?.requestPermission) void DOE.requestPermission().catch(() => "denied");
+    };
+    askTiltPermission();
+    window.addEventListener("pointerdown", askTiltPermission, { once: true });
+    // Alcuni Android/WebView emettono solo l'evento "absolute": ascoltiamo entrambi.
+    window.addEventListener("deviceorientation", onTilt);
+    window.addEventListener("deviceorientationabsolute", onTilt as EventListener);
+    const v = document.createElement("video");
+    v.muted = true;
+    v.playsInline = true;
+    videoRef.current = v;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("La fotocamera AR non è disponibile su questo dispositivo.");
+    } else navigator.mediaDevices
+      .getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1440 }, frameRate: { ideal: 30, max: 30 } },
+        audio: mode === "video",
+      })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        setTorchSupported(supportsCameraTorch(stream.getVideoTracks()[0]));
+        v.srcObject = stream;
+        void v.play().catch(() => {});
+        const paint = (showGrid: boolean) => {
+          const c = canvasRef.current;
+          if (!c) return false;
+          const painted = paintArFrame(
+            c,
+            {
+              video: v,
+              rotation: -rotationRef.current,
+              scene: sceneRef.current,
+              heat: layersRef.current.has("heat") ? (g, w, h) => thermal(g, w, h, taps.current, plantedCooling.current) : undefined,
+            },
+            showGrid,
+          );
+          if (painted && !previewReady) { previewReady = true; setReady(true); }
+          return painted;
+        };
+        paintRef.current = paint;
+        stopFrameLoop = startArFrameLoop(() => {
+          // Same full-resolution composition, capped at 30 fps and paused while hidden.
+          // Durante la scansione il fotogramma resta congelato: il video non viene ridipinto.
+          if (!scanningRef.current) paint(layersRef.current.has("grid"));
+        }, {
+          request: callback => requestAnimationFrame(callback),
+          cancel: id => cancelAnimationFrame(id),
+          hidden: () => document.hidden,
+          listen: callback => {
+            document.addEventListener("visibilitychange", callback);
+            return () => document.removeEventListener("visibilitychange", callback);
+          },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError("Permesso fotocamera negato o telecamera non disponibile.");
+      });
+    return () => {
+      cancelled = true;
+      scanVersion.current += 1;
+      window.removeEventListener("pointerdown", askTiltPermission);
+      window.removeEventListener("deviceorientation", onTilt);
+      window.removeEventListener("deviceorientationabsolute", onTilt as EventListener);
+      stopFrameLoop?.();
+      paintRef.current = null;
+      if (recRef.current?.state === "recording") recRef.current.stop();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      sceneRef.current?.dispose();
+      sceneRef.current = null;
+    };
+  }, [mode, kind]);
+
+  const toggle = (l: Layer) =>
+    setLayers((s) => {
+      const n = new Set(s);
+      if (n.has(l)) n.delete(l);
+      else n.add(l);
+      return n;
+    });
+
+  const scan = async () => {
+    const c = canvasRef.current;
+    if (!c || scanBusy.current || !ready) return;
+    const version = scanVersion.current;
+    scanBusy.current = true;
+    scanningRef.current = true;
+    countRef.current = 0; setCount(0);
+    taps.current = []; plantedCooling.current = [];
+    last.current = null;
+    setSpecies(null);
+    setSoil(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
+      setScanning(true);
+      setFound(null);
+      setPanelOpen(true);
+      setToolsOpen(false); setActiveTool(null);
+    try {
+      const video = videoRef.current;
+      if (!video?.videoWidth) return;
+      // Recognition and frozen preview preserve the live crop and rotation.
+      const small = freezeCameraFrame(c, video, -rotationRef.current);
+      if (!small) return;
+      const image = small.toDataURL("image/jpeg", 0.92);
+      // Same frozen frame, with a second close-up preserving leaf edges and veins.
+      const detail = document.createElement("canvas");
+      const focus = subjectLocked ? subject : SEARCH_BOX;
+      const x = Math.max(0, focus.x - 0.08), y = Math.max(0, focus.y - 0.08);
+      const w = Math.min(1 - x, focus.w + 0.16), h = Math.min(1 - y, focus.h + 0.16);
+      const scale = Math.min(1, 1024 / Math.max(w * small.width, h * small.height));
+      detail.width = Math.max(1, Math.round(w * small.width * scale));
+      detail.height = Math.max(1, Math.round(h * small.height * scale));
+      detail.getContext("2d")?.drawImage(small, x * small.width, y * small.height, w * small.width, h * small.height, 0, 0, detail.width, detail.height);
+      const detailImage = detail.toDataURL("image/jpeg", 0.92);
+      const r = await detectArObject({ data: { image, kind, target: arFocusOption(kind, target).id, ...(detailImage.length <= 1_000_000 ? {detailImage} : {}), ...(subjectLocked ? {focus:subject} : {}) } });
+      if (version !== scanVersion.current) return;
+      const d = r.detection;
+      setSoil(r.soil ?? null);
+      setSurvey(r.survey ?? null);
+      if (!d) {
+        setFound(r.error ?? (r.soil ? "Terreno analizzato · nessuna specie identificata" : "Nessun oggetto riconosciuto."));
+        return;
+      }
+      const cutout = d.outline ? await extractPlantPhoto(image, d.outline) : null;
+      if (version !== scanVersion.current) return;
+      plantPhoto.current = cutout;
+      setPhotoPreview(cutout?.toDataURL("image/png") ?? null);
+      const type =
+        d.type === "vine" || (d.type === "object" && kind === "vineyard") ? "vine" : "tree";
+      const args: Parameters<ArScene["place"]> = [
+        type,
+        d.box.x + d.box.w / 2,
+        Math.min(0.98, d.box.y + d.box.h),
+        Math.max(0.15, d.box.h),
+        cutout ? { image: cutout } : undefined,
+      ];
+      // Nessun modello automatico: la specie riconosciuta viene usata solo ai tocchi sulla griglia.
+      last.current = cutout ? args : null;
+      // Nessun aggancio automatico: le copie compaiono solo con il pulsante +.
+      setLayers((s) => new Set(s).add("objects"));
+      setSpecies(d.species ? { ...d.species, cooling: d.cooling, identification: d.identification } : null);
+      setFound(d.species
+        ? `${d.species.commonName} · ${d.identification?.level === "genus" ? "genere probabile" : "specie probabile"}`
+        : `${d.label} · specie incerta, inquadra una foglia da vicino`);
+
+    } catch {
+      if (version === scanVersion.current) setFound("Analisi interrotta. Controlla la connessione prima di una nuova analisi.");
+    } finally {
+      if (version === scanVersion.current) { scanBusy.current = false; scanningRef.current = false; setScanning(false); }
+    }
+  };
+
+  // All controls share one bounded count; no stage objects and no generic cooling.
+  const changeGreen = (requested: number) => {
+    if (!ready || scanningRef.current || !species?.cooling) return;
+    const next = scannedSpecimenCount(requested);
+    countRef.current = next;
+    taps.current = Array.from({length:next}, (_, i) => ({x:0.2 + (i % 3) * 0.3, y:0.65 + Math.floor(i / 3) * 0.1}));
+    plantedCooling.current = Array.from({length:next}, () => species.cooling);
+    setCount(next);
+  };
+  const addGreen = () => changeGreen(countRef.current + 1);
+  const removeGreen = () => changeGreen(countRef.current - 1);
+  const removeLast = removeGreen;
+  const removeAll = () => changeGreen(0);
+  const thermalEstimate = scannedSpecimenThermal(count, species?.cooling ?? null);
+  const coolingNow = thermalEstimate.deltaT;
+  const shadeNow = thermalEstimate.shadeM2;
+  const MAX_GREEN = MAX_SCANNED_SPECIMENS;
+  // Ogni esemplare in più mostra subito i gradi numerici accanto al conteggio.
+  const countDegrees = species?.cooling ? ` · ≈ −${coolingNow.toFixed(1)} °C` : "";
+  const greenControls = !scanning && (
+    <div className="ar-green-controls" data-camera-controls>
+      <Button variant="ghost" size="icon" className="camera-tool" aria-label="Riduci verde" title="Riduci verde" disabled={count <= 0} onClick={removeGreen}><Minus className="size-4" /></Button>
+      <span className="ar-green-count" aria-live="polite">Esemplari · {count}{countDegrees}</span>
+      <Button variant="ghost" size="icon" className="camera-tool" aria-label="Aggiungi pianta scansionata" title={species?.cooling ? "Aggiungi esemplare alla stima" : "Scansiona prima una pianta"} disabled={!species?.cooling || count >= MAX_GREEN} onClick={addGreen}><Plus className="size-4" /></Button>
+    </div>
+  );
+  const balanceDrag = (event: React.PointerEvent<HTMLSpanElement>) => {
+    event.stopPropagation();
+    if (scanningRef.current || !ready || !species?.cooling) return;
+    const track = event.currentTarget;
+    track.setPointerCapture(event.pointerId);
+    const apply = (clientX: number) => {
+      const rect = track.getBoundingClientRect();
+      if (!rect.width) return;
+      changeGreen(Math.round(Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) * MAX_GREEN));
+    };
+    apply(event.clientX);
+    const move = (ev: PointerEvent) => { ev.stopPropagation(); apply(ev.clientX); };
+    const up = () => {
+      track.removeEventListener("pointermove", move);
+      track.removeEventListener("pointerup", up);
+      track.removeEventListener("pointercancel", up);
+      track.removeEventListener("lostpointercapture", up);
+    };
+    track.addEventListener("pointermove", move);
+    track.addEventListener("pointerup", up);
+    track.addEventListener("pointercancel", up);
+    track.addEventListener("lostpointercapture", up);
+  };
+  const specimenDock = !scanning && species?.cooling && (
+    <div className="ar-specimen-dock" data-camera-controls aria-label="Esemplari e raffrescamento stimato">
+      {greenControls}
+      <div className="ar-thermal-balance" data-camera-controls role="slider" tabIndex={0} aria-disabled={!species?.cooling || scanning} onKeyDown={e => { if (["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "Home", "End"].includes(e.key)) { e.preventDefault(); changeGreen(e.key === "Home" ? 0 : e.key === "End" ? MAX_GREEN : countRef.current + (["ArrowRight","ArrowUp"].includes(e.key) ? 1 : -1)); } }} aria-valuemin={0} aria-valuemax={MAX_GREEN} aria-valuenow={count}
+        aria-valuetext={`${count} esemplari, riduzione stimata ${coolingNow.toFixed(1)} gradi`} aria-label="Bilancia termica simulata">
+        <span className="ar-thermal-balance-labels"><span>Caldo</span><span>Fresco</span></span>
+        <span className="ar-thermal-balance-track is-draggable" onPointerDown={balanceDrag}>
+          <span className="ar-thermal-balance-marker" style={{ left: `${Math.min(100, Math.max(0, (count / MAX_GREEN) * 100))}%` }} />
+          {species?.cooling && <span className="ar-thermal-balance-value" style={{ left: `clamp(2.5rem, ${(count / MAX_GREEN) * 100}%, calc(100% - 2.5rem))` }} aria-live="polite">≈ −{coolingNow.toFixed(1)} °C</span>}
+        </span>
+      </div>
+    </div>
+  );
+  const identificationBadge = species?.identification ? (
+    <p className="ar-identification-badge">
+      {species.identification.level === "species" ? "Specie probabile" : species.identification.level === "genus" ? "Genere probabile" : "Identificazione incerta"}
+      {" · "}{species.identification.leafVisible ? "evidenza fogliare" : "corteccia e portamento"}
+      {(species.colUrl || species.gbifUrl) && <span className="block">Tassonomia: {[species.colUrl ? "Catalogue of Life" : null, species.gbifUrl ? "GBIF" : null].filter(Boolean).join(" · ")}</span>}
+    </p>
+  ) : null;
+  const thermalSummary = !scanning && (found || survey || species || count > 0) && (
+    thermalMin ? (
+      <Button type="button" variant="ghost" data-camera-controls className="ar-thermal-summary ar-thermal-summary-min"
+        onClick={() => setThermalMin(false)} aria-label="Espandi stima termica" title="Espandi stima termica">
+        <Flame className="size-4 shrink-0" /><span>Stima termica{species ? ` · ${species.commonName}` : " · specie non identificata"}{count > 0 && species?.cooling ? ` · ≈ −${coolingNow.toFixed(1)} °C` : ""}</span><ChevronUp className="size-3.5" />
+      </Button>
+    ) : (
+    <section className="ar-thermal-summary" data-camera-controls aria-label="Risultati termici della scansione" aria-live="polite">
+      <div className="ar-thermal-heading">
+        <button type="button" className="ar-thermal-info-btn" onClick={() => setThermalInfoOpen(true)}
+          aria-label="Come leggere la stima termica" title="Come leggere la stima termica">
+          <Flame className="size-4 shrink-0" />
+        </button><span>Stima termica{species ? ` · ${species.commonName}` : ""}{count > 0 ? ` · ×${count}` : ""}</span>
+        <Button type="button" variant="ghost" size="icon" onClick={() => setThermalMin(true)}
+          aria-label="Minimizza stima termica" title="Minimizza stima termica"
+          className="ml-auto grid size-7 shrink-0 place-items-center rounded-full">
+          <ChevronDown className="size-3.5" />
+        </Button>
+      </div>
+      {species && <dl className="ar-thermal-values">
+        <div><dt>Specie</dt><dd>{species.commonName}<span className="block text-xs italic text-muted-foreground">{species.scientificName}{species.family ? ` · ${species.family}` : ""}</span></dd></div>
+        <div><dt>Per esemplare</dt><dd>{species.cooling ? `≈ −${species.cooling.deltaT.toFixed(1)} °C` : "n.d."}</dd></div>
+        <div><dt>Ombreggiatura</dt><dd>{species.cooling ? `≈ ${Math.round(species.cooling.shadeM2)} m²` : "n.d."}</dd></div>
+      </dl>}
+      {!species && <div className="ar-thermal-note"><p className="font-semibold">Pianta non identificata</p><p>{found ?? "Inquadra una foglia da vicino e avvia la scansione."}</p></div>}
+      {identificationBadge}
+      {(species?.cooling || count > thermalEstimate.unknown) && <dl className="ar-thermal-values">
+        <div><dt>{"Riduzione temperatura"}</dt><dd>≈ −{coolingNow.toFixed(1)} °C</dd></div>
+        <div><dt>Ombra teorica</dt><dd>≈ {Math.round(shadeNow)} m²</dd></div>
+      </dl>}
+      {thermalEstimate.unknown > 0 && <p className="ar-thermal-note">{thermalEstimate.unknown} senza stima di specie</p>}
+      {survey && <p className="ar-thermal-exposure">{survey.heatNote}</p>}
+      <p className="ar-thermal-note">Simulazione da chioma tipica · massimo −3 °C · ombre sovrapponibili · temperatura non misurata</p>
+    </section>
+    )
+  );
+
+
+  // Lo scatto porta nel nome il contesto (scenario urbano o zona/fase vitivinicola).
+  const slug = (context ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const tag = slug ? `-${slug}` : "";
+  const shoot = () => {
+    if (!ready || !canvasRef.current) return;
+    playCameraSound("shutter", 1.8);
+    // Il fotogramma salvato non contiene la griglia: la nascondiamo solo per lo scatto.
+    paintRef.current?.(false);
+    const source = canvasRef.current;
+    const lines = captureSummaryLines(species ? {
+      commonName: species.commonName, scientificName: species.scientificName,
+      level: species.identification?.level === "species" ? "Specie probabile" : species.identification?.level === "genus" ? "Genere probabile" : "Identificazione incerta",
+      count, cooling: species.cooling ? coolingNow : null, shade: species.cooling ? shadeNow : null,
+    } : null, context ?? (kind === "urban" ? "Sopralluogo urbano" : "Sopralluogo vitivinicolo"));
+    const saved = document.createElement("canvas");
+    const fontSize = Math.max(14, Math.round(source.width / 38));
+    const g = saved.getContext("2d");
+    if (!g) return;
+    // A separate caption band preserves the full photograph and survives Cloud/download/report.
+    g.font = `${fontSize}px sans-serif`;
+    const wrapped = lines.flatMap((line) => {
+      const result: string[] = []; let row = "";
+      for (const word of line.split(" ")) {
+        const next = row ? `${row} ${word}` : word;
+        if (row && g.measureText(next).width > source.width - fontSize * 2) { result.push(row); row = word; }
+        else row = next;
+      }
+      return [...result, row];
+    });
+    saved.width = source.width;
+    saved.height = source.height + Math.ceil((wrapped.length + 1) * fontSize * 1.5);
+    g.drawImage(source, 0, 0);
+    const theme = getComputedStyle(document.documentElement);
+    g.fillStyle = theme.getPropertyValue("--background").trim() || "Canvas";
+    g.fillRect(0, source.height, saved.width, saved.height - source.height);
+    g.fillStyle = theme.getPropertyValue("--foreground").trim() || "CanvasText";
+    g.font = `${fontSize}px sans-serif`;
+    wrapped.forEach((line, i) => g.fillText(line, fontSize, source.height + (i + 1.2) * fontSize * 1.5));
+    saved.toBlob(
+      (b) => {
+        if (!b) return;
+        onCapture([new File([b], `foto-ar${tag}-${Date.now()}.jpg`, { type: "image/jpeg" })]);
+        onClose();
+      },
+      "image/jpeg",
+      0.92,
+    );
+  };
+
+  const record = () => {
+    if (recording) {
+      recRef.current?.stop();
+      playCameraSound("video-stop", 1.8);
+      return;
+    }
+    const c = canvasRef.current;
+    if (!c) return;
+    const out = c.captureStream(30);
+    streamRef.current?.getAudioTracks().forEach((t) => out.addTrack(t));
+    const type = ["video/webm;codecs=vp9,opus", "video/webm", "video/mp4"].find((m) =>
+      MediaRecorder.isTypeSupported?.(m),
+    );
+    const rec = new MediaRecorder(out, type ? { mimeType: type } : undefined);
+    chunks.current = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size) chunks.current.push(e.data);
+    };
+    rec.onstop = () => {
+      const blob = new Blob(chunks.current, { type: rec.mimeType || "video/webm" });
+      onCapture([
+        new File([blob], `video-ar${tag}-${Date.now()}.${blob.type.includes("mp4") ? "mp4" : "webm"}`, {
+          type: blob.type,
+        }),
+      ]);
+      setRecording(false);
+      onClose();
+    };
+    rec.start(250);
+    playCameraSound("video-start", 1.8);
+    recRef.current = rec;
+    setRecording(true);
+  };
+
+  return (
+    <Dialog modal
+      open={mode !== null}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent
+        style={{
+          // Finestra sempre stabile a tutto schermo: nessuna rotazione CSS, così l'interfaccia
+          // non si sposta né scompare quando il telefono ruota.
+          position: "fixed",
+          inset: 0,
+          width: "100vw",
+          height: "100dvh",
+          maxWidth: "none",
+          maxHeight: "none",
+          transform: "none",
+          translate: "none",
+          scale: "none",
+          margin: 0,
+          borderRadius: 0,
+          display: "block",
+        }}
+        overlayClassName="!animate-none !fixed !inset-0 !h-dvh bg-camera-surface"
+        className="camera-hud ar-pill-hud !animate-none overflow-hidden border-0 bg-camera-surface text-camera-ink p-0 shadow-none sm:max-h-none sm:rounded-none [&>button]:hidden"
+      >
+        <DialogTitle className="sr-only">
+          {mode === "video" ? "Video" : "Foto"} in realtà aumentata
+        </DialogTitle>
+        <div ref={surfaceRef} className="ar-rotation-viewport absolute inset-0">
+        <div className="ar-camera-surface absolute" data-landscape={landscape} style={{
+          width: viewport.width || "100%", height: viewport.height || "100%",
+          left: "50%", top: "50%", transform: `translate(-50%, -50%) rotate(${viewport.rotation}deg)`,
+          "--ar-camera-height": `${viewport.height}px`,
+        } as CSSProperties}>
+        <CameraCloseGestures onClose={onClose} rotation={viewport.rotation}>
+        {error ? (
+          <div className="p-5 text-sm text-muted-foreground">
+            <p className="mb-1 font-semibold text-foreground">Realtà aumentata non disponibile</p>
+            <p>{error}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => mode && onFallback(mode)}>
+                Usa la fotocamera di sistema
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onClose}>
+                Chiudi
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative h-full w-full">
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 h-full w-full touch-none bg-muted"
+              aria-label="Anteprima in realtà aumentata"
+            />
+            {ready && <div className={`ar-viewfinder${subjectLocked ? " is-locked" : ""}${scanning ? " is-locking" : ""}`} aria-hidden="true"
+              style={{ left: `${subject.x * 100}%`, top: `${subject.y * 100}%`, width: `${subject.w * 100}%`, height: `${subject.h * 100}%` }}>
+              <span className="ar-viewfinder-corner tl" /><span className="ar-viewfinder-corner tr" />
+              <span className="ar-viewfinder-corner bl" /><span className="ar-viewfinder-corner br" />
+              <span className="ar-viewfinder-label">{scanning ? (scanPhase === "leaf" ? "Morfologia fogliare" : "Verifica botanica") : subjectLocked ? "Agganciato" : "Ricerca…"}</span>
+              {scanning && <span className="ar-viewfinder-sweep" />}
+            </div>}
+            {guideOpen && <div className="ar-tutorial-veil" data-camera-controls aria-hidden="true" />}
+            {guideOpen && <div className={`ar-tutorial ${Math.abs(viewport.rotation) === 90 ? "touch-pan-x" : "touch-pan-y"}`} data-camera-controls role="dialog" aria-label="Mini tutorial fotocamera AI"
+              onPointerDown={event => {
+                if (!event.isPrimary || event.pointerType === "mouse" || (event.target instanceof Element && event.target.closest("button"))) return;
+                guideSwipe.current = { id: event.pointerId, x: event.clientX, y: event.clientY, rotation: rotationRef.current };
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerUp={event => {
+                const start = guideSwipe.current;
+                guideSwipe.current = null;
+                if (!start || start.id !== event.pointerId) return;
+                setGuideStep(step => tutorialSwipeStep(step, tutorial.length, event.clientX - start.x, event.clientY - start.y, start.rotation));
+              }}
+              onPointerCancel={() => { guideSwipe.current = null; }}>
+              <button type="button" className="ar-tutorial-close" onClick={closeGuide} aria-label="Chiudi tutorial"><X className="size-4" /></button>
+              <div className="ar-tutorial-slides">
+              <div className="ar-tutorial-track" style={{ transform: `translateX(-${guideStep * 100}%)` }}>
+              {tutorial.map((slide, index) => <div className="ar-tutorial-slide" key={slide.title} aria-hidden={index !== guideStep}>
+              <div className="ar-tutorial-demo" data-step={index} aria-hidden="true">
+                <span className="ar-demo-target"><span /><span /><span /><span /></span>
+                <span className="ar-demo-sweep" />
+                <span className="ar-demo-balance"><span /></span>
+                <span className="ar-demo-shutter" />
+              </div>
+              <div className="ar-tutorial-icon" aria-hidden="true">
+                {index === 0 ? <ScanSearch className="size-5" /> : index === 1 ? <Info className="size-5" /> : index === 2 ? <Flame className="size-5" /> : <Zap className="size-5" />}
+              </div>
+              <div className="ar-tutorial-step">
+                <p className="ar-tutorial-title">{slide.title.replace(/^\d+ · /, "")}</p>
+                <p className="ar-tutorial-text">{slide.text}</p>
+              </div>
+              </div>)}
+              </div>
+              </div>
+              <div className="ar-tutorial-dots" aria-label={`Passo ${guideStep + 1} di ${tutorial.length}`}>
+                {tutorial.map((_, i) => <span key={i} data-active={i === guideStep} />)}
+              </div>
+              <div className="ar-tutorial-actions">
+                {guideStep > 0
+                  ? <Button variant="ghost" size="sm" className="camera-tool" onClick={() => setGuideStep(s => s - 1)}>Indietro</Button>
+                  : <Button variant="ghost" size="sm" className="camera-tool" onClick={closeGuide}>Salta</Button>}
+                {guideStep < tutorial.length - 1
+                  ? <Button size="sm" className="ar-tutorial-next" onClick={() => setGuideStep(s => s + 1)}>Avanti</Button>
+                  : <Button size="sm" className="ar-tutorial-next" onClick={closeGuide}>Inizia</Button>}
+              </div>
+            </div>}
+            {thermalInfoOpen && <>
+              <div className="ar-thermal-info-veil" data-camera-controls aria-hidden="true" onPointerDown={() => setThermalInfoOpen(false)} />
+              <div className="ar-thermal-info" data-camera-controls role="dialog" aria-label="Come leggere la stima termica">
+                <button type="button" className="ar-tutorial-close" onClick={() => setThermalInfoOpen(false)} aria-label="Chiudi spiegazione"><X className="size-4" /></button>
+                <div className="ar-thermal-info-icon" aria-hidden="true"><Flame className="size-5" /></div>
+                <p className="ar-tutorial-title">Come leggere la stima termica</p>
+                <p className="ar-thermal-info-text">È una <strong>stima microclimatica modellata</strong> su chioma e dati meteo locali: lo smartphone non dispone di un sensore termico, quindi il rilevamento <strong>non è radiometrico</strong> e non misura la temperatura reale.</p>
+                <p className="ar-thermal-info-text">Per il valore reale puoi collegare al dispositivo un <strong>sensore termico USB-C</strong> (per esempio telecamere termiche o sonde per il suolo): l'app rimane il supporto di sopralluogo, la misura spetta allo strumento.</p>
+                <Button size="sm" className="ar-thermal-info-close" onClick={() => setThermalInfoOpen(false)}>Ho capito</Button>
+              </div>
+            </>}
+            <span className="sr-only" role="status">{subjectLocked ? "Agganciato" : ""}</span>
+                        {scanning && <div className="ar-scan-overlay" role="status" aria-label="Scansione pianta e terreno in corso">
+              <div className="ar-scan-ground"><span className="ar-scan-line" /><span className="ar-scan-label">{scanStatus}<small>{scanPhase === "leaf" ? "1 / 2" : "2 / 2"}</small></span></div>
+            </div>}
+            <CameraCenterCapture tabletOnly onCapture={mode === "photo" ? shoot : record} disabled={!ready || scanning || xrActive} label={mode === "photo" ? "Scatta foto AR" : recording ? "Ferma registrazione" : "Avvia registrazione AR"} />
+            {!ready && (
+              <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground">
+                Avvio fotocamera…
+              </div>
+            )}
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-background/50 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-background/60 to-transparent" />
+            <div data-camera-hud className="ar-camera-topbar">
+              <div className="ar-camera-actions flex shrink-0 gap-1" data-camera-controls>
+                <div className="ar-focus-options" role="radiogroup" aria-label={kind === "urban" ? "Obiettivo camera urbana" : "Obiettivo camera vitivinicola"}>
+                  {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} disabled={scanning} className="camera-tool ar-focus-pill" onClick={() => setTarget(o.id)}>{FOCUS_LABELS[o.id]}</Button>)}
+                </div>
+                {(found || species) && !scanning && <Button variant="ghost" size="sm" aria-label="Mostra esito analisi" title="Mostra esito analisi" className="camera-tool ar-esito-chip" onClick={() => { setToolsOpen(true); setActiveTool("analysis"); setPanelOpen(true); }}><Activity className="size-4 shrink-0" />Esito</Button>}
+                <Button variant="ghost" size="icon" className="camera-tool size-11" aria-label="Guida inquadratura" title="Guida inquadratura" aria-pressed={guideOpen} onClick={() => setGuideOpen(v => !v)}><Info className="size-4" /></Button>
+                {torchSupported && <Button variant="ghost" size="icon" className="camera-tool size-11" disabled={torchBusy || scanning} aria-pressed={torchOn} aria-label={torchOn ? "Disattiva flash" : "Attiva flash"} title={torchOn ? "Disattiva flash" : "Attiva flash"} onClick={() => void toggleTorch()}>{torchOn ? <Zap className="size-4" /> : <ZapOff className="size-4" />}</Button>}
+                <Button variant="ghost" size="icon"
+                  type="button"
+                  onClick={onClose}
+                  disabled={recording}
+                  aria-label="Chiudi"
+                  className="camera-tool grid size-11 place-items-center disabled:opacity-40"
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+            </div>
+            {thermalSummary}
+            {torchError && <p className="ar-flash-error" role="status" data-camera-controls>{torchError}</p>}
+            {toolsOpen && activeTool === "manage" && layers.has("heat") && (
+              <div role="button" tabIndex={0} data-camera-controls aria-label="Come leggere la mappa termica simulata" onClick={() => setThermalInfoOpen(true)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setThermalInfoOpen(true); } }} className="ar-heat-legend">
+                <span>Simulata</span><span>Caldo</span>
+                <span className="h-24 w-2 rounded-full bg-[image:var(--ar-thermal-scale)]" />
+                <span>Fresco</span>
+              </div>
+            )}
+            <div
+              data-camera-hud
+              className={`camera-bottom absolute z-20 flex flex-col items-center ${landscape ? "gap-1.5" : "gap-3"}`}
+            >
+              <div id="ar-camera-tools" hidden={!toolsOpen} className="w-full">
+              {toolsOpen && <div className="ar-tools-panel flex w-full flex-col items-center gap-2">
+              <div className="ar-tool-options" data-camera-controls>
+                <Button variant="ghost" size="sm" className="camera-tool" title="Analisi" aria-label="Analisi" aria-pressed={activeTool === "analysis"} onClick={() => { setActiveTool(v => v === "analysis" ? null : "analysis"); setPanelOpen(true); }}><Info className="size-4" />Analisi</Button>
+                <Button variant="ghost" size="sm" className="camera-tool" title="Livelli AR" aria-label="Livelli AR" aria-pressed={activeTool === "manage"} onClick={() => { setActiveTool(v => v === "manage" ? null : "manage"); setLayers(s => new Set(s).add("grid")); }}><SlidersHorizontal className="size-4" />AR</Button>
+              {activeTool === "manage" && <div className="flex items-center gap-2" data-camera-controls>
+                <Button variant="ghost" size="icon" className="camera-tool" aria-label="Mostra griglia" title="Griglia" aria-pressed={layers.has("grid")} onClick={() => toggle("grid")}><Grid2X2 className="size-4" /></Button>
+                <Button variant="ghost" size="icon" className="camera-tool" aria-label="Mappa termica simulata" title="Calore simulato" aria-pressed={layers.has("heat")} onClick={() => { if (!layers.has("heat")) setThermalInfoOpen(true); toggle("heat"); }}><Flame className="size-4" /></Button>
+              </div>}
+              </div>
+              {!torchSupported && <p className="text-xs text-muted-foreground">Flash non supportato su questa fotocamera.</p>}
+              {(species || soil || found || survey) && activeTool === "analysis" && panelOpen && panelMin && (
+                <Button variant="ghost" type="button" data-camera-controls
+                  className="ar-analysis-min"
+                  onClick={() => setPanelMin(false)}
+                  aria-label="Espandi esito analisi" title="Espandi esito analisi">
+                  <Info className="size-3.5" /><span>Esito analisi</span><ChevronUp className="size-3.5" />
+                </Button>
+              )}
+              {(species || soil || found || survey) && activeTool === "analysis" && panelOpen && !panelMin && (
+                <div className="relative w-[min(92%,24rem)]">
+                  <div className="absolute right-2 top-2 z-10 flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setPanelMin(true)}
+                      aria-label="Minimizza esito analisi"
+                      title="Minimizza esito analisi"
+                      className="grid size-7 place-items-center rounded-full bg-background/80 backdrop-blur-md"
+                    >
+                      <ChevronDown className="size-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => { setPanelOpen(false); setActiveTool(null); }}
+                      aria-label="Chiudi esito analisi"
+                      title="Chiudi esito analisi"
+                      className="grid size-7 place-items-center rounded-full bg-background/80 backdrop-blur-md"
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </div>
+                  <div
+                    data-camera-scroll
+                    className="max-h-[32dvh] overflow-y-auto rounded-lg bg-background/95 px-3 py-3 pr-9 text-xs leading-relaxed backdrop-blur-md"
+                    aria-live="polite"
+                  >
+                  {photoPreview && <img src={photoPreview} alt="Pianta reale scansionata" className="mx-auto mb-2 h-24 max-w-full object-contain" />}
+                  {species ? (
+                    <p>
+                      <span className="text-sm font-semibold">{species.commonName}</span>{" "}
+                      <span className="italic text-muted-foreground">{species.scientificName}</span>
+                      {species.cooling && (
+                        <span className="mt-1 block font-semibold text-primary">Raffrescamento stimato ≈ −{species.cooling.deltaT.toFixed(1)} °C · ombra ≈ {species.cooling.shadeM2} m²</span>
+                      )}
+                    </p>
+                  ) : (
+                    found && <p>{found}</p>
+                  )}
+                  {identificationBadge}
+                  {species?.identification && <p className="mt-1 text-muted-foreground">{species.identification.evidence}</p>}
+                  {soil && (
+                    <p className="text-muted-foreground">
+                      Terreno {soil.label} · permeabilità {soil.permeability} ·{" "}
+                      <span className={soil.plantable ? "text-primary" : "text-destructive"}>
+                        {soil.plantable ? "potenzialmente piantabile" : "superficie non idonea"}
+                      </span>
+                    </p>
+                  )}
+                  {survey && <dl className="mt-2 space-y-1">
+                    <div><dt className="font-semibold">Consistenza apparente</dt><dd className="text-muted-foreground">{survey.consistency}</dd></div>
+                    <div><dt className="font-semibold">Calore / esposizione</dt><dd className="text-muted-foreground">{survey.heatNote}</dd></div>
+                    <div><dt className="font-semibold">Temperatura del terreno</dt><dd className="text-muted-foreground">Non misurata · serve una sonda termica</dd></div>
+                  </dl>}
+                  {soil?.note && <p className="text-muted-foreground">{soil.note}</p>}
+                  {photoPreview && <p className="mt-1 text-muted-foreground">Ritaglio fotografico 2D · dimensioni indicative</p>}
+                  <p className="mt-1 text-muted-foreground">Identificazione e suolo: stime visive, non analisi strumentali.</p>
+                  {found && species && <p role="status">{found}</p>}
+                  {species && (
+                    <p className="text-muted-foreground">
+                      Stima indicativa · piano virtuale
+                      {species.family && <>{" · "}{species.family}</>}
+                      {species.colUrl && (
+                        <>
+                          {" · "}
+                          <a href={species.colUrl} target="_blank" rel="noreferrer" className="underline">Catalogue of Life</a>
+                        </>
+                      )}
+                      {species.gbifUrl && (
+                        <>
+                          {" · "}
+                          <a href={species.gbifUrl} target="_blank" rel="noreferrer" className="underline">GBIF</a>
+                        </>
+                      )}
+
+                    </p>
+                  )}
+                  </div>
+                </div>
+              )}
+              {activeTool === "manage" && count > 0 && <div className="flex flex-wrap items-center justify-center gap-2" data-camera-controls>
+                <Button variant="ghost" size="sm" className="camera-tool" onClick={removeLast} title="Elimina ultimo elemento"><Undo2 className="size-4" />Annulla</Button>
+                {count > 1 && <Button variant="ghost" size="sm" className="camera-tool text-destructive" onClick={removeAll}><Trash2 className="size-4" />Elimina tutti</Button>}
+              </div>}
+              </div>}
+              </div>
+               {!toolsOpen && specimenDock}
+               <CameraCaptureControl mode={mode ?? "photo"} recording={recording} ar disabled={!ready || scanning || xrActive} onCapture={mode === "photo" ? shoot : record} left={<div className="camera-labelled-tool">
+                <Button variant="ghost" size="icon"
+                  type="button"
+                  onClick={() => void scan()}
+                  disabled={!ready || scanning || recording}
+                  aria-label="Scansiona terreno e pianta"
+                  title="Scansiona terreno e pianta"
+                  className="camera-tool size-11 disabled:opacity-40"
+                >
+                  <ScanSearch className={`size-5 ${scanning ? "animate-pulse text-primary" : ""}`} /><span>Scansiona</span>
+                 </Button>
+</div>} right={<div className="camera-labelled-tool">
+                <Button variant="ghost" size="icon"
+                  type="button"
+                  onClick={() => { setToolsOpen((open) => !open); setActiveTool("analysis"); setPanelOpen(true); }}
+                  aria-expanded={toolsOpen}
+                  aria-controls="ar-camera-tools"
+                  aria-label={toolsOpen ? "Nascondi strumenti" : "Mostra strumenti"}
+                  title={toolsOpen ? "Nascondi strumenti" : "Mostra strumenti"}
+                  className="camera-tool size-11"
+                >
+                  <SlidersHorizontal className="size-5" /><span>Strumenti</span>
+                </Button>
+              </div>} />
+              <p className="ar-start-swipe-hint" data-visible={swipeHint} role="status" aria-hidden={!swipeHint}>
+                Fai uno swipe dal basso verso l’alto per chiudere.
+              </p>
+            </div>
+          </div>
+        )}
+        </CameraCloseGestures>
+        </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Palette termica (blu → ciano → giallo → arancio → rosso) */
+const PAL: [number, number, number][] = [
+  [30, 64, 175], [6, 182, 212], [250, 204, 21], [249, 115, 22], [220, 38, 38],
+];
+const LUT = (() => {
+  const t = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const f = (i / 255) * (PAL.length - 1), k = Math.min(PAL.length - 2, Math.floor(f)), u = f - k;
+    for (let c = 0; c < 3; c++) t[i * 3 + c] = (PAL[k]?.[c] ?? 0) + ((PAL[k + 1]?.[c] ?? 0) - (PAL[k]?.[c] ?? 0)) * u;
+  }
+  return t;
+})();
+let tmp: HTMLCanvasElement | null = null;
+
+/**
+ * Visore termico simulato: luminosità e saturazione del fotogramma stimano l'irraggiamento
+ * (superfici chiare/esposte = più calde, verde = più fresco); ogni albero piantato raffresca l'area attorno.
+ */
+function thermal(g: CanvasRenderingContext2D, w: number, h: number, taps: { x: number; y: number }[], cooling: PlacementCooling[]) {
+  const W = 120, H = Math.round((120 * h) / w);
+  tmp ??= document.createElement("canvas");
+  if (tmp.width !== W || tmp.height !== H) { tmp.width = W; tmp.height = H; }
+  const t = tmp.getContext("2d", { willReadFrequently: true });
+  if (!t) return;
+  t.drawImage(g.canvas, 0, 0, W, H);
+  const img = t.getImageData(0, 0, W, H), d = img.data;
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4, r = d[i] ?? 0, gr = d[i + 1] ?? 0, b = d[i + 2] ?? 0;
+      let v = (0.45 * r + 0.35 * gr + 0.2 * b) / 255;
+      if (gr > r && gr > b) v -= 0.25; // vegetazione più fresca
+      v += (y / H) * 0.15; // suolo in basso più caldo
+      for (const [index, p] of taps.entries()) {
+        const dx = x / W - p.x, dy = (y / H - p.y) * 1.6, q = dx * dx + dy * dy;
+        v -= Math.min(3, cooling[index]?.deltaT ?? 0) / 3 * 0.55 * Math.exp(-q / 0.012);
+      }
+      const k = Math.max(0, Math.min(255, Math.round(v * 255))) * 3;
+      d[i] = LUT[k] ?? 0; d[i + 1] = LUT[k + 1] ?? 0; d[i + 2] = LUT[k + 2] ?? 0;
+    }
+  t.putImageData(img, 0, 0);
+  g.save();
+  g.imageSmoothingEnabled = true;
+  g.globalAlpha = 0.85;
+  g.drawImage(tmp, 0, 0, w, h);
+  g.restore();
+}

@@ -1,0 +1,38 @@
+- Heat views use ThermalGrid wave/gradient/island/influence, thermal switch and five-step legend.
+- Grids: diagonal 9×6 entry, fluid through tablet, 48px desktop cells, card/70 borders, reduced motion.
+- Lab shares server Google locations/geocoding and browser maps with coordinate markers.
+- Dashboard presentation/loading never mutates or refetches demo data.
+- Ring animates; mascot skips initial load/reduced motion; sounds never block; Recharts respects reduced motion without changing values.
+- Lab has touch-friendly grids; vineyard scope syncs comparison, grid and controls.
+- Keep pill selectors on one swipeable row; auto-reveal the selected option on small screens.
+- Lab controls precede grids on phones; top-align compact panels elsewhere; desktop tools use grid gutters without resizing cells.
+- Semantic tokens keep light/dark legible; explicit document themes persist; dashboard cards/charts never overflow on mobile/tablet.
+- Header/favicon use optimized transparent robot PNGs.
+- Cases keep dated evidence separate from Query weather and daily source research; authenticated jobs write the public read-only cache.
+- Urban dashboard stage and log persist per signed-in user (owner-only RLS); guests keep them in memory.
+- Auth in the project's own Supabase (email/password + Google OAuth); schema in supabase/migrations; avatar prefs in user-owned profiles and private avatar storage; guest Lab media persists per flow in device-local IndexedDB; uploads queue at module level (lab-media-uploader.ts) and survive unmount; other guest data session-only.
+- Shared dialog scopes account overlay; phone icon reveal reverses on close, other dialogs unchanged.
+- Tablet/desktop: page and full-document dark backdrop scroll together; dialogs stay modal with fixed backdrop on phones — centralized in the shared dialog.
+- AI sensor placement: auth-protected server fn via Sensor.Community + OSM within 5 km; hidden for guests; each suggestion shows a "luogo" line.
+- MVC: models hold data/formulas/store, controllers are server functions, views are features, routes are pages, ui/lib are shared primitives.
+- Shared logo header stays in normal flow on every page and size; the pinned menu's --nav-h counts only its own height.
+- Offline PWA: generateSW at dist/client/sw.js, registered only via src/lib/register-sw.ts (refuses dev/preview/iframe).
+- Tabs replace history; Back returns to Panoramica. Account/Compare use use-back-close; fresh-open return awaits landing to avoid router crashes.
+- Timed email-demo progress stays in local presentation state, not saved decisions; stages derive from entity decisions, Realizzato needs explicit completion; external approvals render below chart/summary.
+- Shared scenarios use a base64 ?scenario= param on / (sections redirect there on fresh open); Panoramica applies it and passes the flow to Lab via sessionStorage.
+- Vineyard stress index: shared component; in the controls panel on phone/desktop, a full-width strip under grid+controls on tablet.
+- Compare uses stable baselines; reset restores the selected snapshot after edits without compounding.
+- Mount dialogs closed, then open via state; StrictMode's double mount makes useBackClose close initially open dialogs.
+- Ordinary capture uses synchronous system-camera.ts clicks on Android/iOS and live SystemCamera elsewhere because Windows ignores capture; gallery stays separate and touch AI stays visible.
+- AR uses validated photo planes, no synthetic plants or placement screen; ar-placement bounds size/cooling. ar-frame excludes grids from photos; ar-frame-loop caps 30 fps and pauses hidden pages.
+- AR recognition uses a shared validated model and a server-only streaming parser; durable service pauses prevent repeating denied requests across reloads.
+- Preview swipes exclude controls. Shared CameraCaptureControl owns the capture dock/local timer; camera-scoped tokens keep footage legible. Touch policy gates center capture.
+- AI rotation uses plane-gravity dead bands, shortest-turn snapshots and shared preview/scan counter-rotation; native resize wins, flat/pitched holding stays stable. Reduced motion skips animation; close restores portrait. System bars need host support.
+- AI HUD groups compact selectors with Info/flash/close; separate hints/results prevent overlap. Landscape tools sit beside thermal results. Keep one expanded panel, honest scan phases and camera-local tutorial swipes.
+- AI identification shows leaf evidence/uncertainty; bounded specimen counts drive cooling without stage plants. Photo captions freeze botanical/thermal results for existing media storage and PDF inclusion.
+- Flash shortcut uses capability-checked track torch, never simulated light; recognition uses full frame and same-frame leaf crop.
+- GIS/CSV uses a pure model and selected-flow snapshot; place coordinates are reference points, not invented geometry.
+- Touch home videos skip browser fullscreen (no banner) and keep portrait lock; CSS draws them landscape. Desktop fullscreens the player. Hide before close.
+- ar-focus holds per-tab AI camera targets (prompt appended server-side); ar-subject-tracker owns pure vegetation tracking.
+- Admin: /admin (ssr:false) uses server fns in controllers/admin.functions.ts guarded by requireAdmin (user_roles via service client); every change writes admin_audit_log.
+- External services are called directly: OpenAI Responses via lib/ai-responses.ts, Google Maps/Places, parallel.ai. No Lovable SDKs.
