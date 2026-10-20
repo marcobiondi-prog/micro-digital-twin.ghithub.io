@@ -486,8 +486,10 @@ export function ArCamera({
 
     } catch (error) {
       console.error("AR scan", error);
-      const unauthorized = error instanceof Error && /Unauthorized/.test(error.message);
-      if (version === scanVersion.current) setFound(unauthorized ? "Sessione scaduta: esci e accedi di nuovo prima di una nuova analisi." : "Analisi interrotta. Controlla la connessione prima di una nuova analisi.");
+      const message = error instanceof Error ? error.message : "";
+      // The host's own error text (e.g. FUNCTION_INVOCATION_TIMEOUT) names the real cause.
+      const detail = message.replace(/<(style|script)[\s\S]*?<\/\1>|<[^>]*>/gi, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+      if (version === scanVersion.current) setFound(/Unauthorized/.test(message) ? "Sessione scaduta: esci e accedi di nuovo prima di una nuova analisi." : `Analisi interrotta${detail ? ` (${detail})` : ""}. Controlla la connessione prima di una nuova analisi.`);
     } finally {
       if (version === scanVersion.current) { scanBusy.current = false; scanningRef.current = false; setScanning(false); }
     }
