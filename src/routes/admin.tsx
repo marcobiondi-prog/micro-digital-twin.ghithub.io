@@ -112,7 +112,7 @@ function Overview() {
         {stat("Riconoscimento AI", d ? (d.aiPaused ? "In pausa" : "Attivo") : undefined)}
       </div>
       {d && <div className="flex flex-wrap items-center gap-2 text-xs"><span className="text-muted-foreground">Servizi configurati:</span>
-        {svc("OpenAI", d.services.ai)}{svc("Google Maps", d.services.googleMaps)}{svc("Parallel", d.services.parallel)}{svc("Cron", d.services.cron)}
+        {svc("AI (Gemini)", d.services.ai)}{svc("Google Maps", d.services.googleMaps)}{svc("Parallel", d.services.parallel)}{svc("Cron", d.services.cron)}
       </div>}
     </div>
   );
