@@ -130,7 +130,7 @@ function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSe
 function LocationMapPreview({ location }: { location: SearchedLocation }) {
   // With a browser key (Maps Embed API, referrer-restricted) use the official embed;
   // otherwise Google's keyless classic embed, so the preview is always Google Maps.
-  const key = import.meta.env["VITE_GOOGLE_MAPS_BROWSER_KEY"];
+  const key = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY;
   const coordinates = `${location.lat},${location.lng}`;
   const src = key
     ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(key)}&q=${encodeURIComponent(coordinates)}&zoom=16&language=it`

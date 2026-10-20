@@ -1,6 +1,6 @@
-Metti qui i video della home (prima erano ospitati da Lovable e non sono nello zip):
+Video della home:
 
   promo.mp4     promo.webm     promo.jpg     (anteprima)
   tutorial.mp4  tutorial.webm  tutorial.jpg  (anteprima)
 
-I nomi devono essere esattamente questi. Basta anche solo la versione .mp4.
+Per sostituirli usa esattamente questi nomi. Basta anche solo la versione .mp4.

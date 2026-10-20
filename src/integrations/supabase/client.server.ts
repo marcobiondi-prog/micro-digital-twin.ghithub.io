@@ -4,17 +4,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { createSupabaseFetch } from "./fetch";
+import { SUPABASE_URL } from "./config";
 
 function createSupabaseAdminClient() {
-  const SUPABASE_URL = process.env['SUPABASE_URL'];
   const SUPABASE_SERVICE_ROLE_KEY = process.env['SUPABASE_SERVICE_ROLE_KEY'];
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    const missing = [
-      ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
-      ...(!SUPABASE_SERVICE_ROLE_KEY ? ['SUPABASE_SERVICE_ROLE_KEY'] : []),
-    ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Set them in .env (see .env.example).`;
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    const message = 'Missing SUPABASE_SERVICE_ROLE_KEY: set the project secret key in .env or in the hosting environment variables.';
     console.error(`[Supabase] ${message}`);
     throw new Error(message);
   }

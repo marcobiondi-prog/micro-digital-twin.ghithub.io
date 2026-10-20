@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyAdminStatus } from "@/controllers/admin.functions";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/integrations/supabase/config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,10 +61,7 @@ export function AccountControl() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
   // Only offer Google when the provider is enabled in Supabase; otherwise it opens a raw error page.
   useEffect(() => {
-    const url = import.meta.env["VITE_SUPABASE_URL"];
-    const key = import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
-    if (!url || !key) return;
-    fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } })
+    fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_PUBLISHABLE_KEY } })
       .then((r) => (r.ok ? r.json() : null))
       .then((s: { external?: { google?: boolean } } | null) => setGoogleEnabled(Boolean(s?.external?.google)))
       .catch(() => setGoogleEnabled(false));

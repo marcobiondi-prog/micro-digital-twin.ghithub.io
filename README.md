@@ -21,18 +21,23 @@ Stack: TanStack Start (React 19, SSR), Tailwind CSS 4, Supabase (database, login
 
 ## 2. Configura le variabili
 
+L'app usa sempre il progetto Supabase indicato in `src/integrations/supabase/config.ts`
+(indirizzo e chiave pubblica `sb_publishable_…`, dati pubblici per natura). Per un altro progetto
+cambia quei due valori. Le chiavi segrete restano fuori dal codice:
+
 ```bash
 cp .env.example .env
 ```
 
-Compila `.env` con le chiavi da *Project Settings → API* e quelle dei servizi esterni.
+Compila `.env` (e le *Environment Variables* della piattaforma di hosting) con la chiave segreta
+`SUPABASE_SERVICE_ROLE_KEY` (*Project Settings → API Keys*) e le chiavi dei servizi esterni.
 Senza `OPENAI_API_KEY`, `GOOGLE_MAPS_API_KEY` o `PARALLEL_API_KEY` l'app funziona lo stesso:
 le relative funzioni mostrano "non configurato". Lo stato di ogni servizio si vede nel pannello admin.
 
 ### Video della home
 
-I video promozionale e tutorial erano ospitati da Lovable e non sono nello zip. Copia i file originali in
-`public/videos/` con i nomi indicati in `public/videos/LEGGIMI.txt`. Senza i file la home funziona, ma i video non partono.
+I video promozionale e tutorial sono in `public/videos/` (nomi in `public/videos/LEGGIMI.txt`).
+Su tablet e desktop il tutorial parte da solo solo al primo accesso; su smartphone si apre a schermo intero in orizzontale.
 
 ## 3. Avvia in locale
 
@@ -108,10 +113,3 @@ $$);
 | `npm run build` / `npm start` | Build di produzione e avvio |
 | `npm test` | Test unitari (Vitest) |
 | `npm run lint` | ESLint |
-
-## Dati dal vecchio progetto Lovable
-
-Questo codice non dipende più da Lovable. Utenti e dati del vecchio database "Lovable Cloud" non vengono
-copiati automaticamente: se ti servono, esportali da Lovable (o dal suo progetto Supabase) e importali
-nelle tabelle omonime del nuovo progetto. Se non puoi esportare anche gli account (`auth.users`),
-gli utenti dovranno registrarsi di nuovo o usare il login Google.
