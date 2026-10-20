@@ -32,7 +32,7 @@
 - AI identification shows leaf evidence/uncertainty; bounded specimen counts drive cooling without stage plants. Photo captions freeze botanical/thermal results for existing media storage and PDF inclusion.
 - Flash shortcut uses capability-checked track torch, never simulated light; recognition uses full frame and same-frame leaf crop.
 - GIS/CSV uses a pure model and selected-flow snapshot; place coordinates are reference points, not invented geometry.
-- Touch home videos skip browser fullscreen (no banner) and keep portrait lock; CSS draws them landscape. Desktop fullscreens the player. Hide before close.
+- Home videos: tablet/desktop autoplay the tutorial muted in the hero slide on open (never fullscreen unless the expand button is used); phones (short side < 600 px) never autoplay and open the chosen video edge-to-edge without browser fullscreen, CSS drawing it landscape. Hide before close.
 - ar-focus holds per-tab AI camera targets (prompt appended server-side); ar-subject-tracker owns pure vegetation tracking.
 - Admin: /admin (ssr:false) uses server fns in controllers/admin.functions.ts guarded by requireAdmin (user_roles via service client); every change writes admin_audit_log.
 - External services are called directly: OpenAI Responses via lib/ai-responses.ts, Google Maps/Places, parallel.ai. No Lovable SDKs.

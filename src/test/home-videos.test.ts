@@ -1,15 +1,59 @@
-import { describe, expect, it, vi } from "vitest";
-import { markPromoSeen, PROMO_SEEN_KEY, shouldShowPromo } from "@/models/home-videos";
-describe("first-access promo", () => {
-  it("shows only on first access after it has been displayed", () => {
-    const values = new Map<string, string>();
-    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
-    expect(shouldShowPromo(storage)).toBe(true);
-    markPromoSeen(storage);
-    expect(values.get(PROMO_SEEN_KEY)).toBe("1");
-    expect(shouldShowPromo(storage)).toBe(false);
+import { createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { HomeVideos } from "@/views/HomeVideos";
+
+describe("home videos on open", () => {
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/");
+    delete (Element.prototype as unknown as Record<string, unknown>)["requestFullscreen"];
   });
-  it("does not interrupt shared scenario opening", () => {
-    expect(shouldShowPromo({ getItem: vi.fn().mockReturnValue(null) }, true)).toBe(false);
+
+  function viewport(width: number, height: number, touchPoints: number) {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("innerWidth", width);
+    vi.stubGlobal("innerHeight", height);
+    vi.stubGlobal("navigator", { ...navigator, maxTouchPoints: touchPoints });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    return vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  }
+
+  it.each([["portrait", 390, 844], ["landscape", 844, 390]])("never autoplays on a smartphone in %s", (_orientation, width, height) => {
+    vi.useFakeTimers();
+    const play = viewport(width, height, 5);
+    render(createElement(HomeVideos));
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(document.querySelector("video")).toBeNull();
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it.each([["tablet", 820, 1180, 5], ["tablet landscape", 1180, 820, 5], ["desktop", 1440, 900, 0]])(
+    "autoplays the tutorial muted inside the page, not fullscreen, on %s",
+    async (_device, width, height, touchPoints) => {
+      const play = viewport(width, height, touchPoints);
+      const request = vi.fn(() => Promise.resolve());
+      Object.defineProperty(Element.prototype, "requestFullscreen", { configurable: true, value: request });
+      render(createElement(HomeVideos));
+      await waitFor(() => { expect(document.querySelector('.home-promo-slide .home-video-player[data-kind="tutorial"] video')).not.toBeNull(); });
+      expect(play).toHaveBeenCalled();
+      expect(document.querySelector("video")?.muted).toBe(true);
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.documentElement.hasAttribute("data-home-video")).toBe(false);
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not autoplay when opening a shared scenario", () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/?scenario=abc");
+    const play = viewport(1440, 900, 0);
+    render(createElement(HomeVideos));
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(document.querySelector("video")).toBeNull();
+    expect(play).not.toHaveBeenCalled();
   });
 });

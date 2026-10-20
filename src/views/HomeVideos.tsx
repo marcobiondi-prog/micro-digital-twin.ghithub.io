@@ -5,7 +5,6 @@ import { flushSync } from "react-dom";
 import { Film, Play, Pause, Maximize, Volume2, VolumeX, X, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { markPromoSeen, shouldShowPromo } from "@/models/home-videos";
 import { syncAppOrientation } from "@/lib/ar-orientation";
 // Static files served from public/videos (see public/videos/LEGGIMI.txt).
 const promo = { url: "/videos/promo.mp4" };
@@ -38,29 +37,31 @@ function enterPlayerFullscreen(player: HTMLElement | null) {
 
 export function HomeVideos() {
   const [selected, setSelected] = useState<VideoKind | null>(null);
-  const [touch, setTouch] = useState(false);
+  // Phones (short side < 600 px) play edge-to-edge; tablets and desktops play inside the page.
+  const [phone, setPhone] = useState(false);
+  const [autoStarted, setAutoStarted] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<VideoKind | null>(null);
   // Fullscreen and the slide/dialog mount the player in different places, so the position carries over.
   const resumeRef = useRef<{ kind: VideoKind; time: number }>({ kind: "promo", time: 0 });
+  // Tablet and desktop: the tutorial starts by itself inside the page, muted as browsers
+  // require for autoplay. Phones never autoplay: the user picks a video and it opens fullscreen.
   useEffect(() => {
-    setTouch(navigator.maxTouchPoints > 0 || window.innerWidth < 1280);
-    const id = window.setTimeout(() => {
-      if (shouldShowPromo(localStorage, new URLSearchParams(location.search).has("scenario"))) {
-        markPromoSeen(localStorage);
-        selectedRef.current = "promo";
-        setSelected("promo");
-        // Automatic playback has no fullscreen gesture; its expand button requests it.
-      }
-    }, 350);
-    return () => clearTimeout(id);
+    const phoneLayout = Math.min(window.innerWidth, window.innerHeight) < 600;
+    setPhone(phoneLayout);
+    if (phoneLayout || new URLSearchParams(location.search).has("scenario")) return;
+    selectedRef.current = "tutorial";
+    resumeRef.current = { kind: "tutorial", time: 0 };
+    setAutoStarted(true);
+    setSelected("tutorial");
   }, []);
   const close = () => {
     const player = playerRef.current;
     // Hide footage before either fullscreen exit or portrait restoration can paint.
     if (player) player.hidden = true;
     selectedRef.current = null;
+    setAutoStarted(false);
     // Reopening a closed video starts from the beginning again.
     resumeRef.current = { kind: resumeRef.current.kind, time: 0 };
     const doc = document as WebKitDocument;
@@ -90,37 +91,38 @@ export function HomeVideos() {
       return;
     }
     selectedRef.current = kind;
-    if (touch) {
+    setAutoStarted(false);
+    if (phone) {
       // Like the AI camera: edge-to-edge without browser fullscreen, so no
       // security banner and no system rotation; CSS draws the video landscape.
       document.documentElement.setAttribute("data-home-video", "");
       flushSync(() => setSelected(kind));
       return;
     }
-    // Desktop: the video stays in its hero slide and never enters browser fullscreen.
+    // Tablet/desktop: the video stays in its hero slide and never enters browser fullscreen.
     // Fullscreen happens only if the user taps the expand control inside the player.
     flushSync(() => setSelected(kind));
   };
-  const desktopSlide = selected !== null && !touch;
+  const desktopSlide = selected !== null && !phone;
   const inShell = desktopSlide;
   const modalOpen = selected !== null && !desktopSlide;
   useEffect(() => {
-    if (!touch || selected === null) return;
+    if (!phone || selected === null) return;
     document.documentElement.setAttribute("data-home-video", "");
     return () => {
       document.documentElement.removeAttribute("data-home-video");
     };
-  }, [touch, selected]);
-  // Touch players already fill the screen; only desktop offers browser fullscreen.
-  const expand = touch ? undefined : () => enterPlayerFullscreen(playerRef.current);
+  }, [phone, selected]);
+  // Phone players already fill the screen; tablet/desktop offer browser fullscreen on request.
+  const expand = phone ? undefined : () => enterPlayerFullscreen(playerRef.current);
   return <div className="home-videos">
     <div className="home-video-buttons flex flex-wrap items-center gap-2">
       <Button className="rounded-full" variant={selected === "tutorial" ? "default" : "outline"} aria-pressed={selected === "tutorial"} onClick={() => open("tutorial")}><Play />Video tutorial</Button>
       <Button className="rounded-full" variant={selected === "promo" ? "default" : "outline"} aria-pressed={selected === "promo"} onClick={() => open("promo")}><Film />Video promozionale</Button>
     </div>
-    {inShell && selected && <section className="home-promo-slide" aria-label={selected === "tutorial" ? "Video tutorial" : "Video promozionale"}><VideoPlayer key={selected} playerRef={playerRef} kind={selected} onClose={close} fullscreen={fullscreen} onExpand={expand} startAt={resumeRef.current.kind === selected ? resumeRef.current.time : 0} onProgress={(value) => { resumeRef.current = { kind: selected, time: value }; }} /></section>}
+    {inShell && selected && <section className="home-promo-slide" aria-label={selected === "tutorial" ? "Video tutorial" : "Video promozionale"}><VideoPlayer key={selected} playerRef={playerRef} kind={selected} autoStart={autoStarted} onClose={close} fullscreen={fullscreen} onExpand={expand} startAt={resumeRef.current.kind === selected ? resumeRef.current.time : 0} onProgress={(value) => { resumeRef.current = { kind: selected, time: value }; }} /></section>}
     <Dialog modal open={modalOpen} onOpenChange={(openState) => { if (!openState) close(); }}>
-      <DialogContent className={`home-video-dialog ${touch ? "home-video-touch left-0 top-0 translate-x-0 translate-y-0" : ""}`} overlayClassName="home-video-overlay">
+      <DialogContent className={`home-video-dialog ${phone ? "home-video-touch left-0 top-0 translate-x-0 translate-y-0" : ""}`} overlayClassName="home-video-overlay">
         <DialogTitle className="sr-only">{selected === "tutorial" ? "Video tutorial" : "Video promozionale"}</DialogTitle>
         <DialogDescription className="sr-only">MICRO DIGITAL TWIN</DialogDescription>
         {selected && !desktopSlide && <VideoPlayer key={selected} playerRef={playerRef} kind={selected} onClose={close} fullscreen={fullscreen} onExpand={expand} startAt={resumeRef.current.kind === selected ? resumeRef.current.time : 0} onProgress={(value) => { resumeRef.current = { kind: selected, time: value }; }} />}
@@ -129,9 +131,10 @@ export function HomeVideos() {
   </div>;
 }
 
-function VideoPlayer({ kind, onClose, fullscreen, onExpand, playerRef, startAt = 0, onProgress }: { kind: VideoKind; onClose: () => void; fullscreen: boolean; onExpand?: (() => void) | undefined; playerRef: RefObject<HTMLDivElement | null>; startAt?: number; onProgress?: (time: number) => void }) {
+function VideoPlayer({ kind, onClose, fullscreen, onExpand, playerRef, startAt = 0, onProgress, autoStart = false }: { kind: VideoKind; autoStart?: boolean; onClose: () => void; fullscreen: boolean; onExpand?: (() => void) | undefined; playerRef: RefObject<HTMLDivElement | null>; startAt?: number; onProgress?: (time: number) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [muted, setMuted] = useState(false);
+  // Autoplay without a user gesture is only allowed muted; the volume button turns sound on.
+  const [muted, setMuted] = useState(autoStart);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -152,7 +155,7 @@ function VideoPlayer({ kind, onClose, fullscreen, onExpand, playerRef, startAt =
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = false;
+    video.muted = autoStart;
     video.volume = 1;
     void video.play().catch(() => { setLoading(false); setPlaying(false); });
     return () => {

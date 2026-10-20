@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { HomeVideos } from "@/views/HomeVideos";
-import { PROMO_SEEN_KEY } from "@/models/home-videos";
 
 type FullscreenStub = { current: () => Element | null; exit: () => void; requested: () => number };
 
@@ -42,22 +41,29 @@ describe("home video fullscreen start", () => {
 
   function stubPlayer() {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
-    localStorage.setItem(PROMO_SEEN_KEY, "1");
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   }
 
   function desktop() {
     vi.stubGlobal("innerWidth", 1440);
+    vi.stubGlobal("innerHeight", 900);
     vi.stubGlobal("navigator", { ...navigator, maxTouchPoints: 0 });
   }
 
-  it.each(["Video tutorial", "Video promozionale"])("opens %s in the hero slide without browser fullscreen on desktop", async (label) => {
+  function phone() {
+    vi.stubGlobal("innerWidth", 390);
+    vi.stubGlobal("innerHeight", 844);
+    vi.stubGlobal("navigator", { ...navigator, maxTouchPoints: 5 });
+  }
+
+  it.each(["Video tutorial", "Video promozionale"])("shows %s in the hero slide without browser fullscreen on desktop", async (label) => {
     stubPlayer();
     desktop();
     const fullscreen = stubFullscreen();
     render(<HomeVideos />);
-    fireEvent.click(screen.getByRole("button", { name: label }));
+    // The tutorial autoplays on open; the promo replaces it from its button.
+    if (label === "Video promozionale") fireEvent.click(screen.getByRole("button", { name: label }));
     await waitFor(() => {
       expect(document.querySelector("video")).not.toBeNull();
     });
@@ -72,7 +78,6 @@ describe("home video fullscreen start", () => {
     desktop();
     const fullscreen = stubFullscreen();
     render(<HomeVideos />);
-    fireEvent.click(screen.getByRole("button", { name: "Video tutorial" }));
     await waitFor(() => { expect(document.querySelector("video")).not.toBeNull(); });
     const video = document.querySelector("video");
     fireEvent.click(screen.getByRole("button", { name: "Espandi video" }));
@@ -100,16 +105,15 @@ describe("home video fullscreen start", () => {
     const native = vi.fn();
     Object.defineProperty(HTMLMediaElement.prototype, "webkitEnterFullscreen", { configurable: true, value: native });
     render(<HomeVideos />);
-    fireEvent.click(screen.getByRole("button", { name: "Video tutorial" }));
     await waitFor(() => { expect(document.querySelector("video")).not.toBeNull(); });
     expect(native).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Espandi video" }));
     expect(native).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["Video tutorial", "Video promozionale"])("on touch opens %s edge-to-edge without browser fullscreen banner or system rotation", async (label) => {
+  it.each(["Video tutorial", "Video promozionale"])("on a phone opens %s edge-to-edge without browser fullscreen banner or system rotation", async (label) => {
     stubPlayer();
-    vi.stubGlobal("navigator", { ...navigator, maxTouchPoints: 1 });
+    phone();
     const lock = vi.fn(() => Promise.resolve());
     vi.stubGlobal("screen", { width: 390, height: 844, orientation: { lock, unlock: vi.fn() } });
     const request = vi.fn(() => Promise.resolve());
@@ -131,6 +135,7 @@ describe("home video fullscreen start", () => {
 
   it("closes by upward swipe but leaves control gestures alone", () => {
     stubPlayer();
+    phone();
     stubFullscreen();
     render(<HomeVideos />);
     fireEvent.click(screen.getByRole("button", { name: "Video tutorial" }));
