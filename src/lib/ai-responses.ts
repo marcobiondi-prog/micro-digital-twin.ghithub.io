@@ -43,7 +43,7 @@ const failure = (status: number, message: string) =>
 
 async function geminiResponses(body: Record<string, unknown>): Promise<Response> {
   const model = process.env["GEMINI_MODEL"] ?? "gemini-flash-latest";
-  const fallbackModel = process.env["GEMINI_FALLBACK_MODEL"] ?? "gemini-flash-lite-latest";
+  const fallbackModels = (process.env["GEMINI_FALLBACK_MODELS"] ?? "gemini-flash-lite-latest,gemini-2.5-flash").split(",").map((m) => m.trim()).filter((m) => m && m !== model);
   const input = body["input"];
   const contents = typeof input === "string"
     ? [{ role: "user", parts: toGeminiParts(input) }]
@@ -69,11 +69,12 @@ async function geminiResponses(body: Record<string, unknown>): Promise<Response>
       const reason = await res.clone().json().catch(() => null) as { error?: { message?: string } } | null;
       if (!/API key/i.test(reason?.error?.message ?? "")) res = await request(false);
     }
-    // An overloaded model (503/500) gets one more try on the lighter fallback model.
-    if ((res.status === 503 || res.status === 500) && fallbackModel !== model) {
-      console.error("Gemini", res.status, "on", model, "- retrying on", fallbackModel);
+    // An overloaded model (503/500) is retried once on each fallback model, in order.
+    for (const fallback of fallbackModels) {
+      if (res.status !== 503 && res.status !== 500) break;
+      console.error("Gemini", res.status, "- retrying on", fallback);
       await new Promise((resolve) => setTimeout(resolve, 800));
-      res = await request(Boolean(schema), fallbackModel);
+      res = await request(Boolean(schema), fallback);
     }
   } catch (error) {
     console.error("Gemini request", error);
