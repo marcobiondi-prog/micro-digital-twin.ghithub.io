@@ -43,6 +43,7 @@ const failure = (status: number, message: string) =>
 
 async function geminiResponses(body: Record<string, unknown>): Promise<Response> {
   const model = process.env["GEMINI_MODEL"] ?? "gemini-flash-latest";
+  const fallbackModels = (process.env["GEMINI_FALLBACK_MODELS"] ?? "gemini-flash-lite-latest,gemini-2.5-flash").split(",").map((m) => m.trim()).filter((m) => m && m !== model);
   const input = body["input"];
   const contents = typeof input === "string"
     ? [{ role: "user", parts: toGeminiParts(input) }]
@@ -51,7 +52,7 @@ async function geminiResponses(body: Record<string, unknown>): Promise<Response>
   const format = (body["text"] as { format?: { type?: string; schema?: unknown } } | undefined)?.format;
   const schema = format?.type === "json_schema" && format.schema && typeof format.schema === "object" ? (({ $schema: _, ...rest }) => rest)(format.schema as Record<string, unknown>) : null;
   const system = [body["instructions"], schema ? `Rispondi solo con JSON valido conforme a questo JSON Schema:\n${JSON.stringify(schema)}` : null].filter((t): t is string => typeof t === "string" && t.length > 0);
-  const request = (enforceSchema: boolean) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+  const request = (enforceSchema: boolean, name = model) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(name)}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": process.env["GEMINI_API_KEY"] ?? "" },
     body: JSON.stringify({
@@ -68,6 +69,13 @@ async function geminiResponses(body: Record<string, unknown>): Promise<Response>
       const reason = await res.clone().json().catch(() => null) as { error?: { message?: string } } | null;
       if (!/API key/i.test(reason?.error?.message ?? "")) res = await request(false);
     }
+    // An overloaded model (503/500) is retried once on each fallback model, in order.
+    for (const fallback of fallbackModels) {
+      if (res.status !== 503 && res.status !== 500) break;
+      console.error("Gemini", res.status, "- retrying on", fallback);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      res = await request(Boolean(schema), fallback);
+    }
   } catch (error) {
     console.error("Gemini request", error);
     return failure(502, "Servizio AI non raggiungibile.");
@@ -82,7 +90,7 @@ async function geminiResponses(body: Record<string, unknown>): Promise<Response>
     // An invalid key comes back as 400: report it as a permission problem like OpenAI's 403.
     const badKey = /API key/i.test(payload?.error?.message ?? "");
     const status = badKey ? 403 : res.status;
-    const message = badKey ? "Chiave Gemini non valida: verifica GEMINI_API_KEY." : res.status === 429 ? "Troppe richieste al servizio AI, riprova tra poco." : `Servizio AI non disponibile (${res.status}).`;
+    const message = badKey ? "Chiave Gemini non valida: verifica GEMINI_API_KEY." : res.status === 429 ? "Troppe richieste al servizio AI, riprova tra poco." : res.status === 503 ? "Servizio AI sovraccarico, riprova tra qualche secondo." : `Servizio AI non disponibile (${res.status}).`;
     return failure(status, message);
   }
   const candidate = payload?.candidates?.[0];

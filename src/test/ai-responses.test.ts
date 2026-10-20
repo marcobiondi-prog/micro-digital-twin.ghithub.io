@@ -39,6 +39,16 @@ describe("Gemini behind the Responses helper", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("retries an overloaded model once on each fallback model", async () => {
+    fetchMock.mockResolvedValueOnce(json({ error: { message: "The model is overloaded.", status: "UNAVAILABLE" } }, 503)).mockResolvedValueOnce(reply(JSON.stringify(recognition)));
+    expect(JSON.parse(await readArResponse(await cameraRequest()))).toEqual(recognition);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("gemini-flash-lite-latest");
+
+    fetchMock.mockReset().mockResolvedValue(json({ error: { message: "The model is overloaded." } }, 503));
+    await expect(readArResponse(await cameraRequest())).rejects.toMatchObject({ status: 503, persistent: false, message: "Servizio AI sovraccarico, riprova tra qualche secondo." });
+    expect(fetchMock.mock.calls.map(([url]) => String(url).split("/models/")[1]!.split(":")[0])).toEqual(["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash"]);
+  });
+
   it("reports blocked, truncated and throttled replies without applying a result", async () => {
     fetchMock.mockResolvedValueOnce(reply("", "SAFETY"));
     await expect(readArResponse(await cameraRequest())).rejects.toMatchObject({ status: 422 });
