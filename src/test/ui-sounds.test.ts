@@ -16,7 +16,7 @@ describe("compare card click", () => {
         createGain: () => ({ ...node(), gain: { set value(v: number) { gains.push(v); } } }),
       };
     }));
-    const fetcher = vi.fn(async () => new Response(new Uint8Array([1]), { headers: { "content-type": "audio/mpeg" } }));
+    const fetcher = vi.fn(async () => new Response(new Uint8Array([1]), { headers: { "content-type": "audio/wav" } }));
     vi.stubGlobal("fetch", fetcher);
     const { playCompareClick, COMPARE_CLICK_URL } = await import("@/lib/ui-sounds");
     playCompareClick();
