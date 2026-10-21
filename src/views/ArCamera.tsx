@@ -751,7 +751,7 @@ export function ArCamera({
               <span className="ar-viewfinder-corner tl" /><span className="ar-viewfinder-corner tr" />
               <span className="ar-viewfinder-corner bl" /><span className="ar-viewfinder-corner br" />
               <span className="ar-viewfinder-label">{scanning ? (scanPhase === "leaf" ? "Morfologia fogliare" : "Verifica botanica") : subjectLocked ? "Agganciato" : "Ricerca…"}</span>
-              {scanning && <span className="ar-viewfinder-sweep" />}
+              {scanning && <span className="ar-viewfinder-scan"><span className="ar-viewfinder-sweep" /></span>}
             </div>}
             {guideOpen && <div className="ar-tutorial-veil" data-camera-controls aria-hidden="true" />}
             {guideOpen && <div className={`ar-tutorial ${Math.abs(viewport.rotation) === 90 ? "touch-pan-x" : "touch-pan-y"}`} data-camera-controls role="dialog" aria-label="Mini tutorial fotocamera AI"
