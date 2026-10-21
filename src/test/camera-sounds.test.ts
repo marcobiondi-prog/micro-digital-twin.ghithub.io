@@ -35,6 +35,26 @@ describe("camera sounds", () => {
     playCameraSound("video-stop", 1.8);
     expect(peaks.slice(1)).toEqual([0.216, 0.216, 0.216, 0.216]);
   });
+  it("plays distinct AI scan start, result and failure cues", () => {
+    const frequencies: number[] = [];
+    const waves: string[] = [];
+    const node = () => ({ connect: vi.fn().mockReturnThis(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() });
+    vi.resetModules();
+    vi.stubGlobal("AudioContext", vi.fn(function () {
+      return {
+        state: "running", currentTime: 0, sampleRate: 48000, destination: {},
+        createGain: () => ({ ...node(), gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } }),
+        createOscillator: () => ({ ...node(), set type(v: string) { waves.push(v); }, frequency: { set value(v: number) { frequencies.push(v); } } }),
+      };
+    }));
+    return import("@/lib/camera-sounds").then(({ playCameraSound: sound }) => {
+      sound("scan-start");
+      sound("scan-done");
+      sound("scan-fail");
+      expect(frequencies).toEqual([523, 659, 784, 784, 1047, 1319, 440, 330]);
+      expect(waves).toEqual(["triangle", "triangle", "triangle", "triangle", "triangle", "triangle", "sine", "sine"]);
+    });
+  });
   it("keeps capture nonblocking when audio is unavailable", async () => {
     vi.resetModules();
     vi.stubGlobal("AudioContext", undefined);
