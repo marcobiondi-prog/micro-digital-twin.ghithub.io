@@ -12,8 +12,13 @@ export function parseCaseWeather(payload:unknown):CaseWeather[] {
   return rows.map((r,i)=>({city:cases[i]?.city??"",time:new Date(r.current.time*1000).toISOString(),temperature:r.current.temperature_2m,humidity:r.current.relative_humidity_2m,wind:r.current.wind_speed_10m,precipitation:r.current.precipitation}));
 }
 export const MAX_CASE_PUBLICATIONS=6;
-/** The publisher's registrable host without "www.", so its subdomains count as the same source. */
-export const sourceDomain=(sourceUrl:string)=>new URL(sourceUrl).hostname.replace(/^www\./,"");
+/** The publisher's registrable domain (news.aqua4d.com → aqua4d.com, worldcitiessummit.com.sg kept whole),
+ * so the publisher's main site and all its subdomains count as the same source. */
+export const sourceDomain=(sourceUrl:string)=>{
+  const labels=new URL(sourceUrl).hostname.replace(/^www\./,"").split(".");
+  const secondLevel=labels.length>2&&labels.at(-1)!.length===2&&/^(com|co|org|gov|ac|edu|net)$/.test(labels.at(-2)!);
+  return labels.slice(secondLevel?-3:-2).join(".");
+};
 export function sourcePublications(payload:unknown,sourceUrl:string):CasePublication[] {
   const result=z.object({results:z.array(z.object({title:z.string(),url:z.string(),publish_date:z.string().nullish(),excerpts:z.array(z.string()).nullish()})),warnings:z.array(z.unknown()).nullish()}).parse(payload);
   const domain=sourceDomain(sourceUrl);

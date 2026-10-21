@@ -1,5 +1,5 @@
 import { describe,expect,it } from "vitest";
-import { caseLocations,parseCaseWeather,sourcePublications } from "@/models/case-updates";
+import { caseLocations,parseCaseWeather,sourceDomain,sourcePublications } from "@/models/case-updates";
 import { cases } from "@/models/data";
 describe("Current case data",()=>{
   it("maps current weather to every respective case",()=>{
@@ -17,6 +17,10 @@ describe("Current case data",()=>{
     expect(publications[0]?.title).toBe("New");
     expect(new Set(publications.map(p=>p.url)).size).toBe(6);
     expect(sourcePublications({results:results.slice(0,4)},"https://www.mdpi.com").map(p=>p.title)).toEqual(["New","Old","Undated"]);
+  });
+  it("searches each case on its publisher's whole domain, not only the subdomain of the reference page",()=>{
+    expect(cases.map(c=>sourceDomain(c.sourceUrl))).toEqual(["urban-initiative.eu","ssph-journal.org","sciencespo.fr","copernicus.org","isprambiente.gov.it","termolionline.it","consorzioiserniavenafro.it","worldcitiessummit.com.sg","urbreath.eu","aqua4d.com","bewaterwise.com","trentinodigitale.it","mdpi.com","acs.org"]);
+    expect(sourcePublications({results:[{title:"Main site",url:"https://aqua4d.com/news/2025"}]},"https://news.aqua4d.com/report.pdf")).toHaveLength(1);
   });
   it("never invents a publication date",()=>{expect(sourcePublications({results:[{title:"Article",url:"https://www.mdpi.com/article",excerpts:null}],warnings:null},"https://www.mdpi.com")[0]?.publishedAt).toBeNull();});
   it("keeps the Romanian Living Lab tied to its original source and reference point",()=>{
