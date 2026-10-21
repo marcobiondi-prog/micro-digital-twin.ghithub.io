@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
-import { Activity, ChevronDown, ChevronUp, Flame, Info, Grid2X2, Minus, Plus, ScanSearch, SlidersHorizontal, Trash2, Undo2, X, Zap, ZapOff } from "lucide-react";
+import { Activity, ChevronDown, ChevronUp, Flame, Info, Grid2X2, Minus, Plus, ScanSearch, SlidersHorizontal, Square, Trash2, Undo2, X, Zap, ZapOff } from "lucide-react";
 import { supportsCameraTorch, setCameraTorch } from "@/lib/camera-torch";
 import { detectArObject, type Detection, type Soil } from "@/controllers/ar-detect.functions";
 import { findSubject, SEARCH_BOX, smoothBox, type SubjectBox } from "@/lib/ar-subject-tracker";
@@ -148,7 +148,9 @@ export function ArCamera({
     const timer = window.setTimeout(() => setScanPhase("catalogue"), 400);
     return () => window.clearTimeout(timer);
   }, [scanning]);
-  const scanStatus = scanPhase === "leaf" ? "Rilevamento morfologia fogliare…" : "Confronto botanico e stima termica…";
+  // Each section names its own scan steps (urban trees/ground, vineyard leaf/canopy/interrow).
+  const phaseText = arFocusOption(kind, target).phases[scanPhase === "leaf" ? 0 : 1];
+  const scanStatus = phaseText.status;
   const toggleTorch = async () => {
     if (torchBusy || !torchSupported || scanning) return;
     setTorchBusy(true); setTorchError(null);
@@ -517,6 +519,16 @@ export function ArCamera({
     }
   };
 
+  // Stops the analysis in progress: the pending reply is ignored (stale version) and the live preview resumes.
+  const cancelScan = () => {
+    if (!scanningRef.current) return;
+    scanVersion.current += 1;
+    scanBusy.current = false;
+    scanningRef.current = false;
+    setScanning(false);
+    setFound("Scansione terminata. Nessun nuovo risultato applicato.");
+  };
+
   // All controls share one bounded count; no stage objects and no generic cooling.
   const changeGreen = (requested: number) => {
     if (!ready || scanningRef.current || !species?.cooling) return;
@@ -768,7 +780,7 @@ export function ArCamera({
               style={{ left: `${subject.x * 100}%`, top: `${subject.y * 100}%`, width: `${subject.w * 100}%`, height: `${subject.h * 100}%` }}>
               <span className="ar-viewfinder-corner tl" /><span className="ar-viewfinder-corner tr" />
               <span className="ar-viewfinder-corner bl" /><span className="ar-viewfinder-corner br" />
-              <span className="ar-viewfinder-label">{scanning ? (scanPhase === "leaf" ? "Morfologia fogliare" : "Verifica botanica") : subjectLocked ? "Agganciato" : "Ricerca…"}</span>
+              <span className="ar-viewfinder-label">{scanning ? phaseText.tag : subjectLocked ? "Agganciato" : "Ricerca…"}</span>
               {scanning && <span className="ar-viewfinder-scan"><span className="ar-viewfinder-sweep" /></span>}
             </div>}
             {guideOpen && <div className="ar-tutorial-veil" data-camera-controls aria-hidden="true" />}
@@ -846,6 +858,7 @@ export function ArCamera({
                   {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} disabled={scanning} className="camera-tool ar-focus-pill" onClick={() => setTarget(o.id)}>{FOCUS_LABELS[o.id]}</Button>)}
                 </div>
                 {(found || species) && !scanning && <Button variant="ghost" size="sm" aria-label="Mostra esito analisi" title="Mostra esito analisi" className="camera-tool ar-esito-chip" onClick={() => { setToolsOpen(true); setActiveTool("analysis"); setPanelOpen(true); }}><Activity className="size-4 shrink-0" />Esito</Button>}
+                {scanning && <Button variant="ghost" size="sm" aria-label="Termina scansione" title="Termina scansione" className="camera-tool ar-esito-chip" onClick={cancelScan}><Square className="size-3.5 shrink-0 fill-current" />Termina</Button>}
                 <Button variant="ghost" size="icon" className="camera-tool size-11" aria-label="Guida inquadratura" title="Guida inquadratura" aria-pressed={guideOpen} onClick={() => setGuideOpen(v => !v)}><Info className="size-4" /></Button>
                 {torchSupported && <Button variant="ghost" size="icon" className="camera-tool size-11" disabled={torchBusy || scanning} aria-pressed={torchOn} aria-label={torchOn ? "Disattiva flash" : "Attiva flash"} title={torchOn ? "Disattiva flash" : "Attiva flash"} onClick={() => void toggleTorch()}>{torchOn ? <Zap className="size-4" /> : <ZapOff className="size-4" />}</Button>}
                 <Button variant="ghost" size="icon"

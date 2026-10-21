@@ -18,4 +18,13 @@ describe("AI camera per tab", () => {
     expect(scanMissing("vineyard", "interrow", { plant: false, ground: true })).toBeNull();
     expect(scanMissing("vineyard", "interrow", { plant: true, ground: false })).toMatch(/interfilare/);
   });
+  it("names each section's own two scan steps in both branches", () => {
+    for (const options of Object.values(AR_FOCUS)) {
+      const statuses = options.map(o => o.phases.map(p => p.status).join(" | "));
+      expect(new Set(statuses).size).toBe(options.length);
+      for (const o of options) expect(o.phases.every(p => p.tag && p.status.endsWith("…"))).toBe(true);
+    }
+    expect(arFocusOption("urban", "ground").phases[0].status).toMatch(/pavimentazione/);
+    expect(arFocusOption("vineyard", "interrow").phases[1].status).toMatch(/compattamento/);
+  });
 });
