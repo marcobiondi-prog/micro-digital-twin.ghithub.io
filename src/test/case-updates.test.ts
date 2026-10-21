@@ -10,6 +10,14 @@ describe("Current case data",()=>{
   it("keeps publications only from the respective source",()=>{
     expect(sourcePublications({results:[{title:"Update",url:"https://www.mdpi.com/article",publish_date:"2026-10-18",excerpts:["Evidence"]},{title:"Wrong",url:"https://other.test/article"},{title:"Unsafe",url:"javascript:alert(1)"}]},"https://www.mdpi.com/2073-4441/15/14/2506")).toEqual([{title:"Update",url:"https://www.mdpi.com/article",publishedAt:"2026-10-18",excerpt:"Evidence"}]);
   });
+  it("keeps up to six distinct publications from the source and its subdomains, newest first",()=>{
+    const results=[{title:"Old",url:"https://www.mdpi.com/a",publish_date:"2023-01-01"},{title:"Undated",url:"https://www.mdpi.com/b"},{title:"New",url:"https://pubs.mdpi.com/c",publish_date:"2026-05-01"},{title:"Duplicate",url:"https://www.mdpi.com/a",publish_date:"2023-01-01"},...Array.from({length:6},(_,i)=>({title:`Extra ${i}`,url:`https://www.mdpi.com/x${i}`,publish_date:`2024-0${i+1}-01`}))];
+    const publications=sourcePublications({results},"https://www.mdpi.com/2073-4441/15/14/2506");
+    expect(publications).toHaveLength(6);
+    expect(publications[0]?.title).toBe("New");
+    expect(new Set(publications.map(p=>p.url)).size).toBe(6);
+    expect(sourcePublications({results:results.slice(0,4)},"https://www.mdpi.com").map(p=>p.title)).toEqual(["New","Old","Undated"]);
+  });
   it("never invents a publication date",()=>{expect(sourcePublications({results:[{title:"Article",url:"https://www.mdpi.com/article",excerpts:null}],warnings:null},"https://www.mdpi.com")[0]?.publishedAt).toBeNull();});
   it("keeps the Romanian Living Lab tied to its original source and reference point",()=>{
     const cluj=cases.find(c=>c.city==="Cluj-Napoca");

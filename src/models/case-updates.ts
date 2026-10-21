@@ -11,13 +11,19 @@ export function parseCaseWeather(payload:unknown):CaseWeather[] {
   if(rows.length!==cases.length) throw new Error("Incomplete weather locations");
   return rows.map((r,i)=>({city:cases[i]?.city??"",time:new Date(r.current.time*1000).toISOString(),temperature:r.current.temperature_2m,humidity:r.current.relative_humidity_2m,wind:r.current.wind_speed_10m,precipitation:r.current.precipitation}));
 }
+export const MAX_CASE_PUBLICATIONS=6;
+/** The publisher's registrable host without "www.", so its subdomains count as the same source. */
+export const sourceDomain=(sourceUrl:string)=>new URL(sourceUrl).hostname.replace(/^www\./,"");
 export function sourcePublications(payload:unknown,sourceUrl:string):CasePublication[] {
   const result=z.object({results:z.array(z.object({title:z.string(),url:z.string(),publish_date:z.string().nullish(),excerpts:z.array(z.string()).nullish()})),warnings:z.array(z.unknown()).nullish()}).parse(payload);
-  const domain=new URL(sourceUrl).hostname.replace(/^www\./,"");
+  const domain=sourceDomain(sourceUrl);
+  const seen=new Set<string>();
+  // Newest first; publications without a declared date keep their search order after the dated ones.
   return result.results.flatMap(r=>{
     const p=publicationSchema.safeParse({title:r.title,url:r.url,publishedAt:r.publish_date??null,excerpt:r.excerpts?.join(" ").slice(0,1200)??""});
-    if(!p.success) return [];
+    if(!p.success||seen.has(p.data.url)) return [];
+    seen.add(p.data.url);
     const host=new URL(p.data.url).hostname.replace(/^www\./,"");
     return host===domain||host.endsWith(`.${domain}`)?[p.data]:[];
-  }).slice(0,3);
+  }).sort((a,b)=>(b.publishedAt??"").localeCompare(a.publishedAt??"")).slice(0,MAX_CASE_PUBLICATIONS);
 }

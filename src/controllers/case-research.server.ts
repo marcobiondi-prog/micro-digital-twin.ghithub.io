@@ -1,5 +1,5 @@
 import { cases } from "@/models/data";
-import { sourcePublications } from "@/models/case-updates";
+import { sourceDomain, sourcePublications } from "@/models/case-updates";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 export async function refreshCaseSources(client:SupabaseClient<Database>,parallelKey:string){
@@ -8,7 +8,7 @@ export async function refreshCaseSources(client:SupabaseClient<Database>,paralle
     try{
       const response=await fetch("https://api.parallel.ai/v1/search",{method:"POST",headers:{"x-api-key":parallelKey,"Content-Type":"application/json"},signal:AbortSignal.timeout(25000),body:JSON.stringify({
         objective:`Find the latest publications and documented updates about ${study.project} in ${study.city} from its original publisher. Prioritize recent publication dates; exclude unrelated projects. Reference: ${study.sourceUrl}`,
-        search_queries:[`${study.project} ${study.city}`.slice(0,200)],mode:"fast",advanced_settings:{max_results:3,excerpt_settings:{max_chars_per_result:1200},source_policy:{include_domains:[new URL(study.sourceUrl).hostname]}}
+        search_queries:[`${study.project} ${study.city}`,study.project,`${study.city} ${study.tags.join(" ")}`].map(q=>q.slice(0,200)),mode:"fast",advanced_settings:{max_results:10,excerpt_settings:{max_chars_per_result:1200},source_policy:{include_domains:[sourceDomain(study.sourceUrl)]}}
       })});
       if(!response.ok){const body=await response.text();console.error(`Parallel [${response.status}]: ${body}`);throw new Error(`Parallel (${response.status}): ${body}`);}
       const payload=await response.json();if(payload.warnings?.length)console.warn("Parallel warnings",payload.warnings);
