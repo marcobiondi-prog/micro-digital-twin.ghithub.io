@@ -22,6 +22,10 @@ const state: Record<MediaKind, Upload[]> = { urban: [], vineyard: [] };
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
 
+/** File inviati contemporaneamente: 4 per le foto, 2 quando nel gruppo ci sono video. */
+export const UPLOAD_PARALLEL = 4;
+export const UPLOAD_PARALLEL_WITH_VIDEO = 2;
+
 /** Lettura diretta delle righe di caricamento (test e contatori). */
 export const getUploads = (k: MediaKind) => state[k];
 
@@ -81,13 +85,13 @@ async function runQueue(
     emit();
   };
 
-  for (let i = 0; i < files.length; i++) {
+  const uploadOne = async (i: number) => {
     const file = files[i]!;
     const up = batch[i]!;
     try {
       if (!mediaKind(file, hint) || file.size > 50 * 1024 * 1024) {
         mark(up.id, "error");
-        continue;
+        return;
       }
       if (!userId) {
         const item: MediaItem = {
@@ -101,16 +105,17 @@ async function runQueue(
         await saveGuestFile(kind, file, item);
         setMedia(kind, (p) => [item, ...p]);
         mark(up.id, "done");
-        continue;
+        return;
       }
       const safe = up.name.replace(/[^\w.-]+/g, "_").slice(-80);
-      const path = `${userId}/${kind}/${Date.now()}-${safe}`;
+      // File in parallelo possono partire nello stesso millisecondo: il suffisso evita percorsi uguali.
+      const path = `${userId}/${kind}/${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}-${safe}`;
       const { error } = await supabase.storage
         .from(MEDIA_BUCKET)
         .upload(path, file, { contentType: file.type });
       if (error) {
         mark(up.id, "error");
-        continue;
+        return;
       }
       const { data } = await supabase.storage.from(MEDIA_BUCKET).createSignedUrl(path, 3600);
       if (data) {
@@ -124,7 +129,16 @@ async function runQueue(
       console.error("[uploader] errore file", up.name, e);
       mark(up.id, "error");
     }
-  }
+  };
+
+  // Più file insieme invece che uno alla volta: le foto viaggiano in parallelo, i video
+  // (pesanti) in coppia per non saturare la connessione del telefono.
+  const limit = batch.some((b) => b.kind === "video") ? UPLOAD_PARALLEL_WITH_VIDEO : UPLOAD_PARALLEL;
+  let next = 0;
+  const worker = async () => {
+    while (next < files.length) await uploadOne(next++);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, files.length) }, worker));
 
   // Gli stati aggiornati stanno nello store, non nei vecchi oggetti del batch.
   const statusOf = (id: string) => state[kind].find((u) => u.id === id)?.status;

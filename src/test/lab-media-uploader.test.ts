@@ -111,3 +111,43 @@ describe("caricamento in background dei file del Lab", () => {
     expect(uploader.getUploads("urban")).toEqual([]);
   });
 });
+
+describe("caricamento multiplo in parallelo", () => {
+  it("invia più file insieme, al massimo 4 foto o 2 con video, senza percorsi duplicati", async () => {
+    vi.resetModules();
+    let active = 0;
+    let peak = 0;
+    const paths: string[] = [];
+    vi.doMock("@/integrations/supabase/client", () => ({
+      supabase: {
+        storage: {
+          from: () => ({
+            upload: async (path: string) => {
+              paths.push(path);
+              active++;
+              peak = Math.max(peak, active);
+              await new Promise((r) => setTimeout(r, 20));
+              active--;
+              return { error: null };
+            },
+            createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://x/${path}` } }),
+          }),
+        },
+      },
+    }));
+    const uploader = await import("@/models/lab-media-uploader");
+    const store = await import("@/models/lab-media-store");
+    const photos = Array.from({ length: 8 }, (_, i) => new File(["x"], "foto.jpg", { type: "image/jpeg", lastModified: i }));
+    uploader.enqueueUploads("urban", photos, "user-1");
+    await vi.waitFor(() => expect(store.getMedia("urban").length).toBe(8));
+    expect(peak).toBe(uploader.UPLOAD_PARALLEL);
+    expect(new Set(paths).size).toBe(8);
+
+    peak = 0;
+    const mixed = [new File(["v"], "clip.mp4", { type: "video/mp4" }), ...photos.slice(0, 4)];
+    uploader.enqueueUploads("vineyard", mixed, "user-1");
+    await vi.waitFor(() => expect(store.getMedia("vineyard").length).toBe(5));
+    expect(peak).toBe(uploader.UPLOAD_PARALLEL_WITH_VIDEO);
+    vi.doUnmock("@/integrations/supabase/client");
+  });
+});
