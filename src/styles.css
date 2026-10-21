@@ -888,25 +888,28 @@
   .compare-cta-glow::before { opacity: 0; }
 }
 
-/* Pulsante AI: faccia bianca pulita in entrambi i temi. Un solo fascio sottile
-   azzurro → verde acqua gira sul bordo; a ogni giro un riflesso netto e leggero attraversa
-   la faccia dall'angolo in basso a sinistra. Niente aloni sfocati. Ciclo di 4 s. */
+/* Pulsante AI: faccia bianca pulita in entrambi i temi, con i colori di Google.
+   Un fascio sottile blu → rosso → giallo → verde gira sul bordo (4 s); un riflesso
+   lento e morbido con gli stessi colori attraversa la faccia dall'angolo in basso a
+   sinistra (6 s, di cui 3,6 s di passaggio). Niente aloni sfocati. */
 .ai-cta {
-  --ai-indigo: oklch(0.68 0.15 235);
-  --ai-violet: oklch(0.72 0.13 185);
+  --g-blue: #4285f4;
+  --g-red: #ea4335;
+  --g-yellow: #fbbc05;
+  --g-green: #34a853;
   position: relative;
   isolation: isolate;
   color: var(--primary);
   background: oklch(1 0 0);
-  border: 1px solid color-mix(in oklab, var(--ai-indigo) 18%, oklch(1 0 0));
-  box-shadow: 0 1px 2px color-mix(in oklab, var(--ai-indigo) 14%, transparent), 0 6px 14px -8px color-mix(in oklab, var(--ai-violet) 45%, transparent);
+  border: 1px solid color-mix(in oklab, var(--g-blue) 18%, oklch(1 0 0));
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--g-blue) 14%, transparent), 0 6px 14px -8px color-mix(in oklab, var(--g-blue) 45%, transparent);
   transition: transform 160ms ease, box-shadow 160ms ease;
   animation: compare-cta-beam 4s linear infinite;
 }
 .ai-cta:hover { background: oklch(1 0 0); }
 .ai-cta:active {
   transform: translateY(1px);
-  box-shadow: 0 1px 2px color-mix(in oklab, var(--ai-indigo) 14%, transparent);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--g-blue) 14%, transparent);
 }
 .ai-cta::before {
   content: "";
@@ -914,7 +917,7 @@
   inset: -1px;
   border-radius: inherit;
   padding: 1.5px;
-  background: conic-gradient(from var(--compare-beam), transparent 0turn 0.62turn, color-mix(in oklab, var(--ai-indigo) 60%, transparent) 0.76turn, var(--ai-violet) 0.86turn, transparent 0.96turn);
+  background: conic-gradient(from var(--compare-beam), transparent 0turn 0.5turn, var(--g-blue) 0.6turn, var(--g-red) 0.7turn, var(--g-yellow) 0.8turn, var(--g-green) 0.9turn, transparent 0.98turn);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
@@ -928,23 +931,23 @@
   z-index: -1;
   pointer-events: none;
 }
-/* Riflesso: banda diagonale stretta e chiara, dall'angolo in basso a sinistra. */
+/* Riflesso: ampia banda diagonale sfumata blu → rosso → giallo → verde, molto leggera. */
 .ai-cta-glow::after {
   content: "";
   position: absolute;
-  inset: -60% -30%;
-  background: linear-gradient(60deg, transparent 44%, color-mix(in oklab, var(--ai-violet) 16%, transparent) 48%, color-mix(in oklab, var(--ai-indigo) 10%, oklch(1 0 0)) 50%, color-mix(in oklab, var(--ai-violet) 16%, transparent) 52%, transparent 56%);
-  transform: translate(-70%, 45%);
+  inset: -60% -40%;
+  background: linear-gradient(60deg, transparent 28%, color-mix(in oklab, var(--g-blue) 16%, transparent) 37%, color-mix(in oklab, var(--g-red) 13%, transparent) 45%, color-mix(in oklab, var(--g-yellow) 16%, transparent) 53%, color-mix(in oklab, var(--g-green) 14%, transparent) 61%, transparent 70%);
+  transform: translate(-75%, 45%);
   opacity: 0;
-  animation: ai-cta-sheen 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation: ai-cta-sheen 6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   pointer-events: none;
 }
 @keyframes ai-cta-sheen {
-  0% { transform: translate(-70%, 45%); opacity: 0; }
-  5% { opacity: 1; }
-  28% { opacity: 1; }
-  34% { transform: translate(70%, -45%); opacity: 0; }
-  100% { transform: translate(70%, -45%); opacity: 0; }
+  0% { transform: translate(-75%, 45%); opacity: 0; }
+  12% { opacity: 1; }
+  48% { opacity: 1; }
+  60% { transform: translate(75%, -45%); opacity: 0; }
+  100% { transform: translate(75%, -45%); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-cta { animation: none; transition: none; }
