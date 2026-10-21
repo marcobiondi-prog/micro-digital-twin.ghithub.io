@@ -12,7 +12,7 @@ import { vineyardControlValue, updateVineyardControl, type VineyardControl } fro
 import { setUrban, setVineyard, useLab } from "@/models/lab-store";
 import { getGooglePlace, reverseGoogleLocation, searchGoogleLocation, suggestGoogleLocations, type LocationSuggestion, type SearchedLocation } from "@/controllers/geo.functions";
 import { searchOsmLocation, reverseOsmLocation, suggestOsmLocations } from "@/controllers/osm-geo.functions";
-import { photonSuggestions, photonUrl } from "@/models/osm-suggest";
+import { photonSuggestions, photonUrl, type OsmSuggestion } from "@/models/osm-suggest";
 import { supabase } from "@/integrations/supabase/client";
 import { phenoPhases, vineModel, type Pheno } from "@/models/data";
 import { levelTone, piazzaEstimate, prototypeLevel, vineZones, type AreaKind, type PrototypeId } from "@/models/scenarios";
@@ -69,6 +69,10 @@ export function splitLocation(label: string) { const parts = label.includes(" ·
 type UrbanGridProps = SharedGridProps & { mode: "urban"; trees: number; permeable: number; shade: number; onTreesChange: (value: number) => void; onPermeableChange: (value: number) => void; onShadeChange: (value: number) => void };
 type VineyardGridProps = SharedGridProps & { mode: "vineyard"; onZonesEdit?: () => void };
 
+const GOOGLE_RETRY_MS = 5 * 60_000;
+let googleRetryAt = 0;
+const osmCache = new Map<string, OsmSuggestion[]>();
+
 function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSelect: (location: SearchedLocation) => void }) {
   const searchLocation = useServerFn(searchGoogleLocation);
   const [query, setQuery] = useState("");
@@ -87,18 +91,28 @@ function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSe
     if (text.length < 2) { setSuggestions([]); setNoSuggestions(false); return; }
     let stale = false;
     const timer = window.setTimeout(async () => {
-      // Google Places first; when it fails or finds nothing, OpenStreetMap (Photon) keeps suggestions working.
-      const google = await suggest({ data: { query: text, sessionToken: token } }).catch(() => null);
+      const show = (items: OsmSuggestion[]) => {
+        setOsmPlaces((places) => ({ ...places, ...Object.fromEntries(items.map((s) => [s.placeId, { label: s.label, lat: s.lat, lng: s.lng }])) }));
+        setSuggestions(items.map(({ placeId, text }) => ({ placeId, text })));
+        setNoSuggestions(!items.length);
+      };
+      const cached = osmCache.get(text);
+      // Google Places and Photon from the device start together, so a refused Google key costs no extra wait.
+      // Hosting IPs are often refused by Photon, so its server function is only the last resort.
+      const device = cached ? Promise.resolve(cached) : fetch(photonUrl(text), { signal: AbortSignal.timeout(5000) }).then((r) => (r.ok ? r.json() : null)).then((body) => photonSuggestions(body, text)).catch(() => [] as OsmSuggestion[]);
+      if (Date.now() >= googleRetryAt) {
+        const google = await suggest({ data: { query: text, sessionToken: token } }).catch(() => null);
+        if (stale) return;
+        if (google?.suggestions.length) { setSuggestions(google.suggestions); setNoSuggestions(false); return; }
+        // A refused key (error) keeps failing: skip Google for a few minutes instead of waiting on it each keystroke.
+        if (!google || google.error) googleRetryAt = Date.now() + GOOGLE_RETRY_MS;
+      }
+      let osm = await device;
+      if (!osm.length && !stale) osm = (await suggestOsm({ data: { query: text } }).catch(() => null))?.suggestions ?? [];
       if (stale) return;
-      if (google?.suggestions.length) { setSuggestions(google.suggestions); setNoSuggestions(false); return; }
-      let osm = (await suggestOsm({ data: { query: text } }).catch(() => null))?.suggestions ?? [];
-      // Hosting IPs can be refused by Photon: the device then asks it directly (CORS-enabled).
-      if (!osm.length && !stale) osm = await fetch(photonUrl(text), { signal: AbortSignal.timeout(6000) }).then((r) => (r.ok ? r.json() : null)).then((body) => photonSuggestions(body, text)).catch(() => []);
-      if (stale) return;
-      setOsmPlaces((places) => ({ ...places, ...Object.fromEntries(osm.map((s) => [s.placeId, { label: s.label, lat: s.lat, lng: s.lng }])) }));
-      setSuggestions(osm.map(({ placeId, text }) => ({ placeId, text })));
-      setNoSuggestions(!osm.length);
-    }, 300);
+      if (osm.length) osmCache.set(text, osm);
+      show(osm);
+    }, 200);
     return () => { stale = true; window.clearTimeout(timer); };
   }, [query, token, suggest, suggestOsm]);
   const pick = async (item: LocationSuggestion) => {
