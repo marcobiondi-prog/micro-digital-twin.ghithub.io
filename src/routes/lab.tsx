@@ -98,7 +98,8 @@ function ComparisonTable({ place, trees, permeable, shade, activeLevel, onApply,
             <button
               key={scenario.name}
               type="button"
-              onClick={() => { playCompareClick(); onApply(scenarioId, scenario.trees, scenario.permeable, scenario.shade); }}
+              onPointerDown={() => playCompareClick()}
+              onClick={(e) => { if (e.detail === 0) playCompareClick(); onApply(scenarioId, scenario.trees, scenario.permeable, scenario.shade); }}
               aria-pressed={selected}
               aria-label={`Applica lo scenario ${scenario.name} alla griglia`}
               className={`min-w-0 cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tone.border} ${selected ? tone.sel : "bg-card"}`}
@@ -218,7 +219,8 @@ function VineComparison({ v, base, activeLevel, onApply }: { v: LabState["vineya
             <div key={sc.name} className="flex min-w-0 flex-col">
             <button
               type="button"
-              onClick={() => { playCompareClick(); onApply(sc.id, sc.boost, sc.cool, zoneIndex); }}
+              onPointerDown={() => playCompareClick()}
+              onClick={(e) => { if (e.detail === 0) playCompareClick(); onApply(sc.id, sc.boost, sc.cool, zoneIndex); }}
               aria-pressed={selected}
               aria-label={`Applica lo scenario ${sc.name} a ${zoneLabel}`}
               className={`min-w-0 cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tone.border} ${selected ? tone.sel : "bg-card"}`}

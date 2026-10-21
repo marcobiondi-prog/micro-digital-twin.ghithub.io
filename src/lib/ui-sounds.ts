@@ -1,7 +1,9 @@
 // Short recorded UI clicks played through Web Audio: decoded once, low latency, never blocking.
-export const COMPARE_CLICK_URL = "/sounds/compare-click.mp3";
+// WAV, not MP3: MP3 encoders pad the start with silence, which would delay the tap.
+export const COMPARE_CLICK_URL = "/sounds/compare-click.wav";
 let context: AudioContext | undefined;
 let click: Promise<AudioBuffer | null> | undefined;
+let decoded: AudioBuffer | null = null;
 
 function audioContext(): AudioContext | undefined {
   if (typeof window === "undefined") return undefined;
@@ -18,17 +20,18 @@ export function preloadCompareClick(): Promise<AudioBuffer | null> {
   click ??= fetch(COMPARE_CLICK_URL)
     .then((r) => (r.ok && /audio|octet-stream/.test(r.headers.get("content-type") ?? "") ? r.arrayBuffer() : null))
     .then((data) => (data ? ctx.decodeAudioData(data) : null))
+    .then((buffer) => (decoded = buffer))
     .catch(() => null);
   return click;
 }
 
-/** Single soft tap when a large Compare card is chosen. */
+/** Single soft tap when a large Compare card is pressed; plays at once when already decoded. */
 export function playCompareClick(volume = 1): void {
   try {
     const ctx = audioContext();
     if (!ctx) return;
     if (ctx.state === "suspended") void ctx.resume().catch(() => {});
-    void preloadCompareClick().then((buffer) => {
+    const play = (buffer: AudioBuffer | null) => {
       if (!buffer) return;
       try {
         const source = ctx.createBufferSource();
@@ -39,6 +42,8 @@ export function playCompareClick(volume = 1): void {
         source.onended = () => { source.disconnect(); gain.disconnect(); };
         source.start();
       } catch { /* Audio rejection must not block the choice. */ }
-    });
+    };
+    if (decoded) play(decoded);
+    else void preloadCompareClick().then(play);
   } catch { /* Audio unavailable. */ }
 }
