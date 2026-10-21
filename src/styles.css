@@ -1499,6 +1499,8 @@ html[data-touch] .lab-media-ai { display: inline-flex; }
 .ar-viewfinder.is-locked:not(.is-locking) { animation: ar-viewfinder-snap 320ms cubic-bezier(.22,1,.36,1); }
 .ar-viewfinder-label { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); white-space: nowrap; border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 600; background: color-mix(in oklab, var(--camera-surface) 55%, transparent); color: var(--camera-ink); backdrop-filter: blur(6px); }
 .ar-viewfinder.is-locked .ar-viewfinder-label { color: var(--ar-outline); }
+/* Clips the full-height sweep to the viewfinder so it never adds page scroll; the label stays outside. */
+.ar-viewfinder-scan { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .ar-viewfinder-sweep { inset-inline: 6%; animation-name: ar-plant-sweep; animation-duration: 2.2s; }
 .ar-viewfinder-sweep::before { top: -20px; height: 40px; background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--ar-outline) 60%, transparent) 50%, transparent); }
 @keyframes ar-viewfinder-snap { 0% { scale: 1.12; } 60% { scale: .96; } 100% { scale: 1; } }
