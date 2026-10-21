@@ -16,6 +16,7 @@ import { comparison, levelTone, nextPhase, piazzaEstimate, prototypeChoice, type
 import { applyVineyardScenario, closestVineyardScenario, vineyardControlValue, vineyardScenarioSteps } from "@/models/vineyard-controls";
 import { resetUrban, resetVineyard, setUrban, setVineyard, useLab, vineMetrics, vineyardSituation, type LabState } from "@/models/lab-store";
 import { cn } from "@/lib/utils";
+import { playCompareClick, preloadCompareClick } from "@/lib/ui-sounds";
 import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { getRealClimate } from "@/controllers/climate.functions";
@@ -97,7 +98,7 @@ function ComparisonTable({ place, trees, permeable, shade, activeLevel, onApply,
             <button
               key={scenario.name}
               type="button"
-              onClick={() => onApply(scenarioId, scenario.trees, scenario.permeable, scenario.shade)}
+              onClick={() => { playCompareClick(); onApply(scenarioId, scenario.trees, scenario.permeable, scenario.shade); }}
               aria-pressed={selected}
               aria-label={`Applica lo scenario ${scenario.name} alla griglia`}
               className={`min-w-0 cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tone.border} ${selected ? tone.sel : "bg-card"}`}
@@ -217,7 +218,7 @@ function VineComparison({ v, base, activeLevel, onApply }: { v: LabState["vineya
             <div key={sc.name} className="flex min-w-0 flex-col">
             <button
               type="button"
-              onClick={() => onApply(sc.id, sc.boost, sc.cool, zoneIndex)}
+              onClick={() => { playCompareClick(); onApply(sc.id, sc.boost, sc.cool, zoneIndex); }}
               aria-pressed={selected}
               aria-label={`Applica lo scenario ${sc.name} a ${zoneLabel}`}
               className={`min-w-0 cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${tone.border} ${selected ? tone.sel : "bg-card"}`}
@@ -243,6 +244,7 @@ function VineComparison({ v, base, activeLevel, onApply }: { v: LabState["vineya
 }
 
 function ComparisonDialog({ children, matrix, onImportWeather }: { children: ReactNode; matrix: ReactNode; onImportWeather?: () => Promise<void> }) {
+  useEffect(() => { void preloadCompareClick(); }, []);
   const [tab, setTab] = useState<"scenarios" | "matrix">("scenarios");
   return (
     <DialogContent className="grid h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-7xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg p-0 sm:block sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)] sm:overflow-y-auto sm:overscroll-contain">
