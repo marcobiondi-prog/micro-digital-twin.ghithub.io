@@ -65,15 +65,23 @@ function clickTarget(target: EventTarget | null): Element | null {
 }
 
 /**
- * One app-wide listener: every button taps on pointer down (in step with the finger);
- * keyboard activation (click with detail 0) taps on click. Camera views opt out with
+ * One app-wide listener. A mouse taps on button-down; touch and pen tap only when the
+ * press activates the control (its click), so touching a button to scroll stays silent.
+ * Keyboard activation (click with detail 0) taps on click. Camera views opt out with
  * data-no-ui-click because they have their own shutter and scan sounds.
  */
 export function installUiClicks(): () => void {
   if (typeof document === "undefined") return () => {};
   void preloadCompareClick();
-  const down = (e: PointerEvent) => { if (e.button === 0 && clickTarget(e.target)) playCompareClick(); };
-  const click = (e: MouseEvent) => { if (e.detail === 0 && clickTarget(e.target)) playCompareClick(); };
+  let pointer = "mouse";
+  const down = (e: PointerEvent) => {
+    pointer = e.pointerType || "mouse";
+    if (pointer === "mouse" && e.button === 0 && clickTarget(e.target)) playCompareClick();
+  };
+  const click = (e: MouseEvent) => {
+    if ((e.detail === 0 || pointer !== "mouse") && clickTarget(e.target)) playCompareClick();
+    pointer = "mouse";
+  };
   document.addEventListener("pointerdown", down, { capture: true, passive: true });
   document.addEventListener("click", click, { capture: true, passive: true });
   return () => {

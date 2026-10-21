@@ -47,9 +47,20 @@ describe("compare card click", () => {
     document.getElementById("b")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
     document.getElementById("b")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
     expect(starts).toHaveBeenCalledTimes(3);
+    // Touch: silent on touch-down (a scroll may follow), one tap when the press activates the button.
+    document.getElementById("inner")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "touch" }));
+    expect(starts).toHaveBeenCalledTimes(3);
+    document.getElementById("inner")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    expect(starts).toHaveBeenCalledTimes(4);
+    // A touch that scrolled (no click) leaves no pending tap for the next mouse click.
+    document.getElementById("inner")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "touch" }));
+    press("inner");
+    expect(starts).toHaveBeenCalledTimes(5);
+    document.getElementById("b")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    expect(starts).toHaveBeenCalledTimes(5);
     stop();
     press("inner");
-    expect(starts).toHaveBeenCalledTimes(3);
+    expect(starts).toHaveBeenCalledTimes(5);
   });
   it("stays silent without Web Audio", async () => {
     vi.resetModules();
