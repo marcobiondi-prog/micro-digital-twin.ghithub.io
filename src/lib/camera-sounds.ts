@@ -76,3 +76,57 @@ export function playCameraSound(sound: CameraSound, volume = 1): void {
     else play();
   } catch { /* Audio rejection must not block capture or scanning. */ }
 }
+/** Cycle of the ground scan line (styles.css: ar-ground-sweep), so the hum rises and falls with it. */
+const SCAN_SWEEP_SECONDS = 3.6;
+
+/**
+ * Soft scanning hum while the AI analysis runs: a filtered tone whose pitch follows the
+ * sweeping line, fading in and out. Returns a stop function; audio failures never block the scan.
+ */
+export function startScanLoop(volume = 1): () => void {
+  if (typeof window === "undefined") return () => {};
+  try {
+    const Audio = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Audio) return () => {};
+    if (!audio || audio.state === "closed") audio = new Audio();
+    const context = audio;
+    const level = Math.min(2, Math.max(0, volume));
+    const now = context.currentTime;
+    const tone = context.createOscillator();
+    tone.type = "triangle";
+    tone.frequency.value = 330;
+    // Same period as the line; the negative depth lowers the pitch while the line descends.
+    const sweep = context.createOscillator();
+    sweep.type = "sine";
+    sweep.frequency.value = 1 / SCAN_SWEEP_SECONDS;
+    const depth = context.createGain();
+    depth.gain.value = -70;
+    const filter = context.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 1200;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.035 * level, now + 0.4);
+    sweep.connect(depth).connect(tone.frequency);
+    tone.connect(filter).connect(gain).connect(context.destination);
+    tone.start(now);
+    sweep.start(now);
+    if (context.state === "suspended") void context.resume().catch(() => {});
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      try {
+        const end = context.currentTime;
+        gain.gain.cancelScheduledValues(end);
+        gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), end);
+        gain.gain.exponentialRampToValueAtTime(0.0001, end + 0.25);
+        tone.stop(end + 0.3);
+        sweep.stop(end + 0.3);
+        tone.onended = () => { tone.disconnect(); sweep.disconnect(); depth.disconnect(); filter.disconnect(); gain.disconnect(); };
+      } catch { /* Already stopped or audio gone. */ }
+    };
+  } catch {
+    return () => {};
+  }
+}

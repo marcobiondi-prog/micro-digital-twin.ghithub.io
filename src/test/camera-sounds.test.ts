@@ -57,6 +57,28 @@ describe("camera sounds", () => {
       expect(waves).toEqual(["triangle", "triangle", "triangle", "triangle", "triangle", "triangle", "sine", "sine"]);
     });
   });
+  it("hums while scanning in step with the sweep and fades out once when stopped", async () => {
+    const stops: number[] = [];
+    const frequencies: number[] = [];
+    const ramps: number[] = [];
+    const node = () => ({ connect: vi.fn().mockReturnThis(), disconnect: vi.fn(), start: vi.fn(), stop: (at: number) => stops.push(at) });
+    vi.resetModules();
+    vi.stubGlobal("AudioContext", vi.fn(function () {
+      return {
+        state: "running", currentTime: 2, destination: {},
+        createGain: () => ({ ...node(), gain: { value: 0.06, setValueAtTime: vi.fn(), linearRampToValueAtTime: (v: number) => ramps.push(v), exponentialRampToValueAtTime: vi.fn(), cancelScheduledValues: vi.fn() } }),
+        createBiquadFilter: () => ({ ...node(), frequency: { value: 0 } }),
+        createOscillator: () => ({ ...node(), frequency: { set value(v: number) { frequencies.push(v); } } }),
+      };
+    }));
+    const { startScanLoop } = await import("@/lib/camera-sounds");
+    const stop = startScanLoop(1.8);
+    expect(frequencies).toEqual([330, 1 / 3.6]);
+    expect(ramps[0]).toBeCloseTo(0.063);
+    stop();
+    stop();
+    expect(stops).toEqual([2.3, 2.3]);
+  });
   it("keeps capture nonblocking when audio is unavailable", async () => {
     vi.resetModules();
     vi.stubGlobal("AudioContext", undefined);
