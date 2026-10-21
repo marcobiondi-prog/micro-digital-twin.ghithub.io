@@ -6,6 +6,7 @@
 - Lab has touch-friendly grids; vineyard scope syncs comparison, grid and controls.
 - Keep pill selectors on one swipeable row; auto-reveal the selected option on small screens.
 - Lab controls precede grids on phones; top-align compact panels elsewhere; desktop tools use grid gutters without resizing cells.
+- Touch devices (hover: none, coarse pointer) disable text selection and long-press callouts except in fields.
 - Semantic tokens keep light/dark legible; explicit document themes persist; dashboard cards/charts never overflow on mobile/tablet.
 - Header/favicon use optimized transparent robot PNGs.
 - Cases keep dated evidence separate from Query weather and daily source research; authenticated jobs write the public read-only cache.
