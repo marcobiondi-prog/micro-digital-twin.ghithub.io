@@ -26,6 +26,8 @@ import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, ty
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
+/** How long the scan runs visibly before stopping when the frame has nothing to analyse. */
+const PRECHECK_SCAN_MS = 1200;
 const FOCUS_LABELS = { tree: "Vegetazione", ground: "Suolo", leaf: "Foglia", canopy: "Chioma", interrow: "Interfila" };
 
 const URBAN_TUTORIAL = [
@@ -444,9 +446,17 @@ export function ArCamera({
       setPanelOpen(true);
       setToolsOpen(false); setActiveTool(null);
     try {
-      // A vegetation target with no vegetation in the frame stops here, without calling the AI.
+      // A vegetation target with no vegetation in the frame never calls the AI: a short visible scan
+      // (sweep and sound) confirms the tap, then it stops with the section's message.
       const nothingToScan = scanPrecheck(kind, target, subjectLocked);
-      if (nothingToScan) { playCameraSound("scan-fail", 1.8); setFound(nothingToScan); return; }
+      if (nothingToScan) {
+        playCameraSound("scan-start", 1.8);
+        await new Promise((resolve) => window.setTimeout(resolve, PRECHECK_SCAN_MS));
+        if (version !== scanVersion.current) return;
+        playCameraSound("scan-fail", 1.8);
+        setFound(nothingToScan);
+        return;
+      }
       const video = videoRef.current;
       if (!video?.videoWidth) return;
       // Recognition and frozen preview preserve the live crop and rotation.
