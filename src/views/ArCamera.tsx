@@ -708,14 +708,14 @@ export function ArCamera({
     g.fillStyle = theme.getPropertyValue("--foreground").trim() || "CanvasText";
     g.font = `${fontSize}px sans-serif`;
     wrapped.forEach((line, i) => g.fillText(line, fontSize, source.height + (i + 1.2) * fontSize * 1.5));
+    // The photo is already frozen in `saved`: close the camera at once and let the JPEG encode
+    // (the slow part on phones) finish in the background, then hand the file to the Lab queue.
+    const name = `foto-ar${tag}-${Date.now()}.jpg`;
+    onClose();
     saved.toBlob(
-      (b) => {
-        if (!b) return;
-        onCapture([new File([b], `foto-ar${tag}-${Date.now()}.jpg`, { type: "image/jpeg" })]);
-        onClose();
-      },
+      (b) => { if (b) onCapture([new File([b], name, { type: "image/jpeg" })]); },
       "image/jpeg",
-      0.92,
+      0.88,
     );
   };
 
