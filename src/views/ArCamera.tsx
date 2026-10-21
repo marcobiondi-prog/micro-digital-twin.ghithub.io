@@ -21,7 +21,7 @@ import { CameraCloseGestures } from "@/views/CameraCloseGestures";
 import { tutorialSwipeStep } from "@/lib/ar-tutorial-swipe";
 import { CameraCenterCapture } from "@/views/CameraCenterCapture";
 import { CameraCaptureControl } from "@/views/CameraCaptureControl";
-import { playCameraSound } from "@/lib/camera-sounds";
+import { playCameraSound, startScanLoop } from "@/lib/camera-sounds";
 import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 
 type Mode = "photo" | "video";
@@ -419,6 +419,9 @@ export function ArCamera({
       else n.add(l);
       return n;
     });
+
+  // Scanning hum: runs only while an analysis is in progress in an open camera, and always stops.
+  useEffect(() => (scanning && mode ? startScanLoop(1.8) : undefined), [scanning, mode]);
 
   const scan = async () => {
     const c = canvasRef.current;
