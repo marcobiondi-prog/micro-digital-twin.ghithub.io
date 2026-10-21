@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { cases } from "./data";
-const coordinates = [[37.3891,-5.9845],[41.3874,2.1686],[48.8566,2.3522],[45.4064,11.8768],[41.5603,14.6627],[41.9994,14.9939],[41.5957,14.2345],[1.3521,103.8198],[46.7712,23.5857],[46.3103,7.5715],[38.2975,-122.2869],[46.0748,11.1217],[41.3464,1.6974],[38.2975,-122.2869]];
+const coordinates = [[37.3891,-5.9845],[41.3874,2.1686],[48.8566,2.3522],[45.4064,11.8768],[41.55837,14.659698],[41.9994,14.9939],[41.5957,14.2345],[1.3521,103.8198],[46.7712,23.5857],[46.3103,7.5715],[38.2975,-122.2869],[46.0748,11.1217],[41.3464,1.6974],[38.2975,-122.2869]];
 export const caseLocations = cases.map((c,i) => ({ city:c.city, lat:coordinates[i]?.[0] ?? 0, lng:coordinates[i]?.[1] ?? 0 }));
 export const publicationSchema = z.object({ title:z.string(), url:z.url().refine(u=>u.startsWith("https://")), publishedAt:z.string().nullable(), excerpt:z.string() });
 export type CasePublication = z.infer<typeof publicationSchema>;

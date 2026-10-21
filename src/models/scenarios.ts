@@ -7,7 +7,7 @@ export function piazzaEstimate(trees: number, depave: number, shade: number) {
 }
 
 export const places = {
-  piazza: { name: "Piazza Vittorio Emanuele II", sub: "Campobasso · Palazzo San Giorgio (Municipio)", lat: 41.5603, lng: 14.6627 },
+  piazza: { name: "Piazza Vittorio Emanuele II", sub: "Campobasso · Molise", lat: 41.55837, lng: 14.659698 },
   vigneto: { name: "Vigneto", sub: "Colline del Molise", lat: 41.83, lng: 14.98 },
 };
 

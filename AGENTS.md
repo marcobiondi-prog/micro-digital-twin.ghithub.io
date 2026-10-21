@@ -1,6 +1,6 @@
 - Heat views use ThermalGrid wave/gradient/island/influence, thermal switch and five-step legend.
 - Grids: diagonal 9×6 entry, fluid through tablet, 48px desktop cells, card/70 borders, reduced motion.
-- Lab shares server Google locations/geocoding and browser maps with coordinate markers; with the browser key a 2D/3D switch loads the photorealistic maps3d view (lazy, Maps JS + Map Tiles API), 2D stays default.
+- Lab shares server Google locations/geocoding and browser maps with coordinate markers; with the browser key a 2D/3D switch loads the photorealistic maps3d view (lazy, Maps JS + Map Tiles API) in a panel that grows on 3D and shrinks back before returning to 2D (camera centred at Open-Meteo ground elevation, never sea level; re-frames on resize via models/map-3d-camera.ts, plus a recenter button; pin clamped to ground), 2D stays default.
 - Dashboard presentation/loading never mutates or refetches demo data.
 - Every button and button-like link plays the shared ui-sounds tap only in the installed app on touch devices (phones 0.75, tablets softer, silent on desktop and in browser tabs): mouse on button-down, touch/pen only on activation (click, never on touch-down or scroll), keyboard on click; the AI camera taps too, except shutter/record/scan (own sounds), which opt out with data-no-ui-click like the system camera.
 - Ring animates; mascot skips initial load/reduced motion; sounds never block; Recharts respects reduced motion without changing values.
@@ -8,7 +8,7 @@
 - Keep pill selectors on one swipeable row; auto-reveal the selected option on small screens.
 - Lab controls precede grids on phones; top-align compact panels elsewhere; desktop tools use grid gutters without resizing cells.
 - Touch devices (hover: none, coarse pointer) disable text selection and long-press callouts except in fields.
-- No pinch-zoom on phones or tablets: viewport user-scalable=no, base touch-action pan-x pan-y on every element, iOS gesture/scale blocks and ctrl+wheel blocked on touch devices (desktop keeps ctrl+wheel zoom).
+- No pinch-zoom on phones or tablets: viewport user-scalable=no, base touch-action pan-x pan-y on every element, iOS gesture/scale blocks and ctrl+wheel blocked on touch devices (desktop keeps ctrl+wheel zoom); only [data-map-gestures] maps (the 3D view, gestureHandling GREEDY, one-finger move) keep their own pinch/rotate.
 - Semantic tokens keep light/dark legible; explicit document themes persist; dashboard cards/charts never overflow on mobile/tablet.
 - Header/favicon use optimized transparent robot PNGs.
 - Cases keep dated evidence separate from Query weather and daily source research; authenticated jobs write the public read-only cache.
