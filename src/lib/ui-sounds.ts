@@ -2,10 +2,29 @@
 // WAV, not MP3: MP3 encoders pad the start with silence, which would delay the tap.
 // Imported as an asset so its URL carries a content hash: a changed sound never plays from a stale cache.
 import compareClickUrl from "@/assets/compare-click.wav";
+import { isInstalledApp } from "@/lib/installed-app";
+import { isTouchDevice } from "@/lib/touch-device";
 
 export const COMPARE_CLICK_URL = compareClickUrl;
 /** Slightly below full scale: the tap accompanies every button, so it stays discreet. */
 export const UI_CLICK_VOLUME = 0.75;
+/** Tablets sit closer to their speakers' full range, so they play a little softer. */
+export const TABLET_CLICK_VOLUME = 0.6;
+
+/**
+ * Button taps belong to the installed app on touch devices: silent in a browser tab and on
+ * desktops (no touchscreen); phones (short side < 600 px) play at UI_CLICK_VOLUME, tablets softer.
+ */
+export function uiClickVolume(): number {
+  if (typeof window === "undefined" || !isInstalledApp() || !isTouchDevice()) return 0;
+  const shortSide = Math.min(window.screen?.width || window.innerWidth, window.screen?.height || window.innerHeight);
+  return shortSide < 600 ? UI_CLICK_VOLUME : TABLET_CLICK_VOLUME;
+}
+
+function tap(): void {
+  const volume = uiClickVolume();
+  if (volume > 0) playCompareClick(volume);
+}
 let context: AudioContext | undefined;
 let click: Promise<AudioBuffer | null> | undefined;
 let decoded: AudioBuffer | null = null;
@@ -65,7 +84,7 @@ function clickTarget(target: EventTarget | null): Element | null {
 }
 
 /**
- * One app-wide listener. A mouse taps on button-down; touch and pen tap only when the
+ * One app-wide listener (volume and on/off from uiClickVolume). A mouse taps on button-down; touch and pen tap only when the
  * press activates the control (its click), so touching a button to scroll stays silent.
  * Keyboard activation (click with detail 0) taps on click. Camera views opt out with
  * data-no-ui-click because they have their own shutter and scan sounds.
@@ -74,18 +93,27 @@ export function installUiClicks(): () => void {
   if (typeof document === "undefined") return () => {};
   void preloadCompareClick();
   let pointer = "mouse";
+  // The control a touch started on: menus that open on pointer down (Radix triggers) make
+  // the following click land on the page behind them, so the press is matched to its start.
+  let pressed: Element | null = null;
   const down = (e: PointerEvent) => {
     pointer = e.pointerType || "mouse";
-    if (pointer === "mouse" && e.button === 0 && clickTarget(e.target)) playCompareClick();
+    pressed = pointer === "mouse" ? null : clickTarget(e.target);
+    if (pointer === "mouse" && e.button === 0 && clickTarget(e.target)) tap();
   };
   const click = (e: MouseEvent) => {
-    if ((e.detail === 0 || pointer !== "mouse") && clickTarget(e.target)) playCompareClick();
+    const target = clickTarget(e.target) ?? (pressed?.isConnected ? pressed : null);
+    if ((e.detail === 0 || pointer !== "mouse") && target) tap();
     pointer = "mouse";
+    pressed = null;
   };
+  const cancel = () => { pressed = null; };
   document.addEventListener("pointerdown", down, { capture: true, passive: true });
   document.addEventListener("click", click, { capture: true, passive: true });
+  document.addEventListener("pointercancel", cancel, { capture: true, passive: true });
   return () => {
     document.removeEventListener("pointerdown", down, { capture: true });
     document.removeEventListener("click", click, { capture: true });
+    document.removeEventListener("pointercancel", cancel, { capture: true });
   };
 }
