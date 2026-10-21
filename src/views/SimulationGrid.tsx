@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import { FormEvent, Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { CloudSun, Droplets, Grape, LoaderCircle, LocateFixed, MapPin, Search, Sprout, Thermometer, TreePine, TrendingDown, Umbrella } from "lucide-react";
 import { Card, StatusBadge } from "@/views/health";
@@ -147,18 +147,31 @@ function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSe
   return <div className="location-search min-w-0 md:col-span-full"><form onSubmit={submit} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2" role="search"><div className="relative min-w-0"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca località su Google Maps" aria-label="Cerca zona con Google Maps" className="h-11 rounded-lg bg-lab-surface pl-9 pr-3 font-mono" autoComplete="off" aria-autocomplete="list" aria-controls="location-suggestions" />{suggestions.length > 0 && <ul id="location-suggestions" role="listbox" className="absolute inset-x-0 top-12 z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">{suggestions.map((item) => <li key={item.placeId} role="option" aria-selected={false}><Button variant="ghost" type="button" onClick={() => pick(item)} className="flex h-auto min-h-11 w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-left text-sm"><MapPin className="size-4 shrink-0 text-primary" /><span className="min-w-0 whitespace-normal break-words">{item.text}</span></Button></li>)}</ul>}</div><Button type="submit" size="icon" disabled={loading || query.trim().length < 3} aria-label="Cerca zona" className="size-11 shrink-0 rounded-lg">{loading ? <LoaderCircle className="animate-spin" /> : <Search />}</Button><Button type="button" variant="secondary" onClick={locate} disabled={locating} aria-label="Usa la mia posizione" className="h-11 shrink-0 rounded-lg px-3">{locating ? <LoaderCircle className="animate-spin" /> : <LocateFixed />}<span className="hidden sm:inline">La mia posizione</span></Button></form><div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-[minmax(7rem,12rem)_minmax(0,1fr)] sm:items-center md:grid-cols-1 md:items-start lg:grid-cols-[minmax(7rem,12rem)_minmax(0,1fr)] lg:items-center"><div className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0 text-primary" /><div className="min-w-0"><span className="block break-words font-medium text-foreground">{splitLocation(initial.label).name}</span>{splitLocation(initial.label).sub && <span className="block break-words">{splitLocation(initial.label).sub}</span>}<span className="mt-1 block font-mono text-[10px]">{initial.lat.toFixed(4)}, {initial.lng.toFixed(4)}</span></div></div><LocationMapPreview location={initial} /></div>{noSuggestions && !error && query.trim().length >= 2 && <p role="status" className="mt-2 text-xs text-muted-foreground">Nessun suggerimento: premi Cerca per trovare la zona.</p>}{error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}</div>;
 }
 
+const LocationMap3D = lazy(() => import("@/views/LocationMap3D").then((m) => ({ default: m.LocationMap3D })));
+
 function LocationMapPreview({ location }: { location: SearchedLocation }) {
   // With a browser key (Maps Embed API, referrer-restricted) use the official embed;
   // otherwise Google's keyless classic embed, so the preview is always Google Maps.
   const key = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY;
+  const [view, setView] = useState<"2d" | "3d">("2d");
   const coordinates = `${location.lat},${location.lng}`;
   const src = key
     ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(key)}&q=${encodeURIComponent(coordinates)}&zoom=16&language=it`
     : `https://maps.google.com/maps?q=${encodeURIComponent(coordinates)}&z=16&hl=it&output=embed`;
-  return <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`} target="_blank" rel="noreferrer" aria-label={`Apri ${location.label} in Google Maps`} className="flex min-w-0 flex-col overflow-hidden rounded-md border bg-lab-surface">
-    <iframe key={coordinates} title={`Mappa di ${location.label}`} src={src} loading="lazy" referrerPolicy="strict-origin-when-cross-origin" className="pointer-events-none block h-36 w-full border-0 sm:h-40" />
-    <span className="flex items-center justify-end gap-1 border-t border-border/60 bg-background/95 px-2 py-1 text-[10px] font-medium text-foreground">Apri in Google Maps<MapPin className="size-3 shrink-0 text-primary" aria-hidden="true" /></span>
-  </a>;
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`;
+  // The photorealistic 3D view needs the browser key (Maps JavaScript API + Map Tiles API): without it only 2D is offered.
+  const toggle = key && <div className="flex gap-0.5 rounded-full bg-muted p-0.5" role="group" aria-label="Vista della mappa">{(["2d", "3d"] as const).map((v) => <Button key={v} type="button" size="sm" variant={view === v ? "default" : "ghost"} aria-pressed={view === v} onClick={() => setView(v)} className="h-6 rounded-full px-2.5 text-[10px] font-semibold">{v === "2d" ? "2D" : "3D"}</Button>)}</div>;
+  const footer = <span className="flex items-center justify-between gap-2 border-t border-border/60 bg-background/95 px-2 py-1 text-[10px] font-medium text-foreground">{toggle || <span />}<a href={mapsUrl} target="_blank" rel="noreferrer" aria-label={`Apri ${location.label} in Google Maps`} className="inline-flex items-center gap-1">Apri in Google Maps<MapPin className="size-3 shrink-0 text-primary" aria-hidden="true" /></a></span>;
+  if (view === "3d" && key) return <div className="flex min-w-0 flex-col overflow-hidden rounded-md border bg-lab-surface">
+    <Suspense fallback={<div className="h-36 w-full bg-lab-surface sm:h-40" />}><LocationMap3D lat={location.lat} lng={location.lng} label={splitLocation(location.label).name} apiKey={key} /></Suspense>
+    {footer}
+  </div>;
+  return <div className="flex min-w-0 flex-col overflow-hidden rounded-md border bg-lab-surface">
+    <a href={mapsUrl} target="_blank" rel="noreferrer" aria-label={`Apri ${location.label} in Google Maps`} tabIndex={-1} className="block">
+      <iframe key={coordinates} title={`Mappa di ${location.label}`} src={src} loading="lazy" referrerPolicy="strict-origin-when-cross-origin" className="pointer-events-none block h-36 w-full border-0 sm:h-40" />
+    </a>
+    {footer}
+  </div>;
 }
 
 /** Vibration grows gradually toward the critical vine temperature and adds a warning pulse past it. */
