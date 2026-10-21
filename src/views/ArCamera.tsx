@@ -758,7 +758,7 @@ export function ArCamera({
         if (!o) onClose();
       }}
     >
-      <DialogContent
+      <DialogContent data-no-ui-click
         style={{
           // Finestra sempre stabile a tutto schermo: nessuna rotazione CSS, così l'interfaccia
           // non si sposta né scompare quando il telefono ruota.

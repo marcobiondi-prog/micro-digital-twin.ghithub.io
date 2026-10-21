@@ -2,6 +2,7 @@
 - Grids: diagonal 9×6 entry, fluid through tablet, 48px desktop cells, card/70 borders, reduced motion.
 - Lab shares server Google locations/geocoding and browser maps with coordinate markers.
 - Dashboard presentation/loading never mutates or refetches demo data.
+- Every button and button-like link plays the shared ui-sounds tap on pointer down (keyboard: click detail 0); camera dialogs opt out with data-no-ui-click.
 - Ring animates; mascot skips initial load/reduced motion; sounds never block; Recharts respects reduced motion without changing values.
 - Lab has touch-friendly grids; vineyard scope syncs comparison, grid and controls.
 - Keep pill selectors on one swipeable row; auto-reveal the selected option on small screens.

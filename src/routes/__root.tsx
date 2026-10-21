@@ -11,6 +11,7 @@ import { AccountControl } from "@/views/account-control";
 import { TwinMascot } from "@/views/TwinMascot";
 import { syncAppOrientation } from "@/lib/ar-orientation";
 import { markTouchDevice } from "@/lib/touch-device";
+import { installUiClicks } from "@/lib/ui-sounds";
 import { Home, BookOpen, FlaskConical, LayoutDashboard, Library } from "lucide-react";
 
 function NotFoundComponent() {
@@ -364,6 +365,8 @@ function RootComponent() {
     markTouchDevice();
     void import("@/lib/register-sw").then((m) => m.registerServiceWorker());
   }, []);
+  // Soft keyboard-style tap on every button across the app.
+  useEffect(() => installUiClicks(), []);
   useEffect(() => {
     const lock = () => {
       void syncAppOrientation();
