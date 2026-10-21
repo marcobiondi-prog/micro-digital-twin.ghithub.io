@@ -24,6 +24,7 @@
 - Vineyard stress index: shared component; in the controls panel on phone/desktop, a full-width strip under grid+controls on tablet.
 - Compare: stable baselines, snapshot resets; vineyard highlight = card closest to sliders, shared bounds.
 - Mount dialogs closed, then open via state; StrictMode's double mount makes useBackClose close initially open dialogs.
+- The AI camera button shows only in the installed app (display-mode standalone/fullscreen/minimal-ui or iOS standalone), never in a browser tab.
 - Ordinary capture uses synchronous system-camera.ts clicks on Android/iOS and live SystemCamera elsewhere because Windows ignores capture; gallery stays separate and touch AI stays visible.
 - AR uses validated photo planes, no synthetic plants or placement screen; ar-placement bounds size/cooling. ar-frame excludes grids from photos; ar-frame-loop caps 30 fps and pauses hidden pages.
 - AR recognition uses a shared validated model and a server-only streaming parser; durable service pauses prevent repeating denied requests across reloads.
