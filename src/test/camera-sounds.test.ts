@@ -80,7 +80,7 @@ describe("camera sounds", () => {
     const stop = startScanLoop(1.8);
     await flush();
     expect(log.frequencies).toEqual([330, 1 / 3.6]);
-    expect(log.ramps[0]).toBeCloseTo(0.063);
+    expect(log.ramps[0]).toBeCloseTo(0.126);
     stop();
     stop();
     expect(log.stops.map((at) => Math.round(at * 100) / 100)).toEqual([3.85, 3.85]);
@@ -97,7 +97,7 @@ describe("camera sounds", () => {
     expect(fetcher).toHaveBeenCalledWith(SCAN_LOOP_URL);
     expect(log.loops).toEqual([true]);
     expect(log.frequencies).toEqual([]);
-    expect(log.ramps[0]).toBeCloseTo(0.63);
+    expect(log.ramps[0]).toBeCloseTo(1);
     stop();
     expect(log.stops.map((at) => Math.round(at * 100) / 100)).toEqual([3.85]);
     startScanLoop(1.8)();
