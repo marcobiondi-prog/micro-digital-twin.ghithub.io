@@ -83,7 +83,7 @@ describe("camera sounds", () => {
     expect(log.ramps[0]).toBeCloseTo(0.063);
     stop();
     stop();
-    expect(log.stops.map((at) => Math.round(at * 100) / 100)).toEqual([3.25, 3.25]);
+    expect(log.stops.map((at) => Math.round(at * 100) / 100)).toEqual([3.85, 3.85]);
   });
   it("loops the recorded scan sound with a fade in and out when the file is present", async () => {
     const log = { stops: [] as number[], frequencies: [] as number[], ramps: [] as number[], loops: [] as boolean[] };
@@ -99,7 +99,7 @@ describe("camera sounds", () => {
     expect(log.frequencies).toEqual([]);
     expect(log.ramps[0]).toBeCloseTo(0.63);
     stop();
-    expect(log.stops.map((at) => Math.round(at * 100) / 100)).toEqual([3.25]);
+    expect(log.stops.map((at) => Math.round(at * 100) / 100)).toEqual([3.85]);
     startScanLoop(1.8)();
     await flush();
     expect(fetcher).toHaveBeenCalledOnce();
