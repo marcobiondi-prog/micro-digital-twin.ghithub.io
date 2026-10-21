@@ -21,6 +21,10 @@ export function hapticPattern(intensity: number, critical = false): number[] {
   return critical ? [first, 8, second, 12, second] : [first, 6, second];
 }
 
+/** AI scan haptics: pulses that grow when the scan starts and fade when it ends, like the sound. */
+export const SCAN_HAPTIC_IN = [18, 40, 32, 40, 52, 40, 80];
+export const SCAN_HAPTIC_OUT = [80, 40, 52, 40, 32, 40, 18];
+
 export function hapticTick(pattern: number | number[] = hapticPattern(0)) {
   if (typeof window === "undefined" || typeof navigator === "undefined") return;
   if (typeof navigator.vibrate !== "function") return;
