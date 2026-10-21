@@ -858,7 +858,6 @@ export function ArCamera({
                   {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} disabled={scanning} className="camera-tool ar-focus-pill" onClick={() => setTarget(o.id)}>{FOCUS_LABELS[o.id]}</Button>)}
                 </div>
                 {(found || species) && !scanning && <Button variant="ghost" size="sm" aria-label="Mostra esito analisi" title="Mostra esito analisi" className="camera-tool ar-esito-chip" onClick={() => { setToolsOpen(true); setActiveTool("analysis"); setPanelOpen(true); }}><Activity className="size-4 shrink-0" />Esito</Button>}
-                {scanning && <Button variant="ghost" size="sm" aria-label="Termina scansione" title="Termina scansione" className="camera-tool ar-esito-chip" onClick={cancelScan}><Square className="size-3.5 shrink-0 fill-current" />Termina</Button>}
                 <Button variant="ghost" size="icon" className="camera-tool size-11" aria-label="Guida inquadratura" title="Guida inquadratura" aria-pressed={guideOpen} onClick={() => setGuideOpen(v => !v)}><Info className="size-4" /></Button>
                 {torchSupported && <Button variant="ghost" size="icon" className="camera-tool size-11" disabled={torchBusy || scanning} aria-pressed={torchOn} aria-label={torchOn ? "Disattiva flash" : "Attiva flash"} title={torchOn ? "Disattiva flash" : "Attiva flash"} onClick={() => void toggleTorch()}>{torchOn ? <Zap className="size-4" /> : <ZapOff className="size-4" />}</Button>}
                 <Button variant="ghost" size="icon"
@@ -995,17 +994,21 @@ export function ArCamera({
               </div>}
               </div>
                {!toolsOpen && specimenDock}
-               <CameraCaptureControl mode={mode ?? "photo"} recording={recording} ar disabled={!ready || scanning || xrActive} onCapture={mode === "photo" ? shoot : record} left={<div className="camera-labelled-tool">
+               <CameraCaptureControl mode={mode ?? "photo"} recording={recording} ar disabled={!ready || scanning || xrActive} onCapture={mode === "photo" ? shoot : record} left={<div className="camera-labelled-tool ar-scan-tools">
                 <Button variant="ghost" size="icon"
                   type="button"
                   onClick={() => void scan()}
                   disabled={!ready || scanning || recording}
                   aria-label="Scansiona terreno e pianta"
                   title="Scansiona terreno e pianta"
-                  className="camera-tool size-11 disabled:opacity-40"
+                  className={`camera-tool size-11 disabled:opacity-40${scanning ? " is-compact" : ""}`}
                 >
-                  <ScanSearch className={`size-5 ${scanning ? "animate-pulse text-primary" : ""}`} /><span>Scansiona</span>
+                  <ScanSearch className={`size-5 ${scanning ? "animate-pulse text-primary" : ""}`} />{!scanning && <span>Scansiona</span>}
                  </Button>
+                {/* While scanning the scan button shrinks to its icon and a stop icon sits beside it. */}
+                {scanning && <Button variant="ghost" size="icon" type="button" onClick={cancelScan} aria-label="Termina scansione" title="Termina scansione" className="camera-tool is-compact">
+                  <Square className="size-4 fill-current" />
+                </Button>}
 </div>} right={<div className="camera-labelled-tool">
                 <Button variant="ghost" size="icon"
                   type="button"
