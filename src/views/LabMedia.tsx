@@ -385,9 +385,10 @@ export function LabMedia({ kind, context }: { kind: "urban" | "vineyard"; contex
                   onClick={() => {
                     void prepareArOrientation().then(() => setAr("photo"));
                   }}
-                  className="lab-media-action lab-media-ai"
+                  className="lab-media-action lab-media-ai ai-cta"
                   aria-label="Foto in realtà aumentata"
                 >
+                  <span className="ai-cta-glow" aria-hidden="true" />
                   {/* The logo already reads "AI": no extra label beside it. */}
                   <img src={aiLogo} alt="" aria-hidden="true" draggable={false} className="size-6 shrink-0 select-none" />
                 </Button>

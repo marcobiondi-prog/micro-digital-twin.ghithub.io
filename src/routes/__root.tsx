@@ -10,7 +10,7 @@ import { ThemeToggle } from "@/views/theme-toggle";
 import { AccountControl } from "@/views/account-control";
 import { TwinMascot } from "@/views/TwinMascot";
 import { syncAppOrientation } from "@/lib/ar-orientation";
-import { markTouchDevice } from "@/lib/touch-device";
+import { isTouchDevice, markTouchDevice } from "@/lib/touch-device";
 import { installUiClicks } from "@/lib/ui-sounds";
 import { Home, BookOpen, FlaskConical, LayoutDashboard, Library } from "lucide-react";
 
@@ -305,13 +305,22 @@ function RootComponent() {
   const navigate = useNavigate();
   const location = useLocation();
   useEffect(() => {
-    // iOS Safari ignores user-scalable=no: block its native pinch gestures.
+    // No pinch-zoom on phones or tablets. user-scalable=no is ignored by iPadOS Safari, by
+    // Android tablets in desktop mode and by Windows touch (Surface), so pinch is also blocked
+    // here: iOS gesture events, iOS two-finger scale moves, and the ctrl+wheel that touchpad and
+    // touchscreen pinch produce on touch devices (styles.css adds touch-action: pan-x pan-y).
     const block = (e: Event) => e.preventDefault();
+    const scaleMove = (e: TouchEvent) => { const scale = (e as TouchEvent & { scale?: number }).scale; if (e.touches.length > 1 && scale !== undefined && scale !== 1) e.preventDefault(); };
+    const pinchWheel = (e: WheelEvent) => { if (e.ctrlKey && isTouchDevice()) e.preventDefault(); };
     document.addEventListener("gesturestart", block);
     document.addEventListener("gesturechange", block);
+    document.addEventListener("touchmove", scaleMove, { passive: false });
+    window.addEventListener("wheel", pinchWheel, { passive: false });
     return () => {
       document.removeEventListener("gesturestart", block);
       document.removeEventListener("gesturechange", block);
+      document.removeEventListener("touchmove", scaleMove);
+      window.removeEventListener("wheel", pinchWheel);
     };
   }, []);
   useEffect(() => {
