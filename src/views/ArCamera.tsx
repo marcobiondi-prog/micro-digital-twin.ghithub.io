@@ -773,7 +773,8 @@ export function ArCamera({
         <div className="ar-camera-surface absolute" data-landscape={landscape} style={{
           width: viewport.width || "100%", height: viewport.height || "100%",
           left: "50%", top: "50%", transform: `translate(-50%, -50%) rotate(${viewport.rotation}deg)`,
-          "--ar-camera-height": `${viewport.height}px`,
+          // Unmeasured (0) falls back to 100dvh in the CSS instead of collapsing the panels.
+          ...(viewport.height ? { "--ar-camera-height": `${viewport.height}px` } : {}),
         } as CSSProperties}>
         <CameraCloseGestures onClose={onClose} rotation={viewport.rotation}>
         {error ? (
