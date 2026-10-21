@@ -5,11 +5,17 @@ import { routeTree } from "./routeTree.gen";
 // After a new deploy, an open tab may request page chunks that no longer exist.
 // Reload once to pick up the fresh build instead of showing a blank screen.
 const RELOAD_KEY = "chunk-reload-at";
+/** Drop the service worker's cached pages first: on a slow network it may serve the old
+ * HTML, whose chunks no longer exist, and the reload would fail the same way again. */
+export async function reloadFresh() {
+  try { if ("caches" in window) await caches.delete("pages"); } catch { /* cache unavailable */ }
+  window.location.reload();
+}
 function reloadForStaleChunk() {
   const last = Number(sessionStorage.getItem(RELOAD_KEY) ?? 0);
   if (Date.now() - last < 10_000) return;
   sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
-  window.location.reload();
+  void reloadFresh();
 }
 const isChunkError = (e: unknown) =>
   /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(

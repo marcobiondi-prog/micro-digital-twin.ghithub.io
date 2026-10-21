@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Outlet, Link, createRootRouteWithContext, useRouter, useLocation, useNavigate, HeadContent, Scripts, type ErrorComponentProps } from "@tanstack/react-router";
+import { Outlet, Link, createRootRouteWithContext, useLocation, useNavigate, HeadContent, Scripts, type ErrorComponentProps } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
@@ -12,6 +12,7 @@ import { TwinMascot } from "@/views/TwinMascot";
 import { syncAppOrientation } from "@/lib/ar-orientation";
 import { isTouchDevice, markTouchDevice } from "@/lib/touch-device";
 import { installUiClicks } from "@/lib/ui-sounds";
+import { reloadFresh } from "@/router";
 import { Home, BookOpen, FlaskConical, LayoutDashboard, Library } from "lucide-react";
 
 function NotFoundComponent() {
@@ -28,16 +29,15 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: ErrorComponentProps) {
+function ErrorComponent({ error }: ErrorComponentProps) {
   console.error(error);
-  const router = useRouter();
   useEffect(() => {
     const msg = String((error as Error)?.message ?? error);
     if (/Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg)) {
       const last = Number(sessionStorage.getItem("chunk-reload-at") ?? 0);
       if (Date.now() - last > 10_000) {
         sessionStorage.setItem("chunk-reload-at", String(Date.now()));
-        window.location.reload();
+        void reloadFresh();
         return;
       }
     }
@@ -47,7 +47,9 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold text-foreground">La pagina non si è caricata</h1>
-        <button onClick={() => { router.invalidate(); reset(); }} className="mt-6 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Riprova</button>
+        {/* The technical reason, small, so a screenshot is enough to diagnose the failure. */}
+        <p className="mt-2 break-words text-xs text-muted-foreground">{String((error as Error)?.message ?? error).slice(0, 160)}</p>
+        <button onClick={() => void reloadFresh()} className="mt-6 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Riprova</button>
       </div>
     </div>
   );
