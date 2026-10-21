@@ -1,6 +1,9 @@
 // Short recorded UI clicks played through Web Audio: decoded once, low latency, never blocking.
 // WAV, not MP3: MP3 encoders pad the start with silence, which would delay the tap.
-export const COMPARE_CLICK_URL = "/sounds/compare-click.wav";
+// Imported as an asset so its URL carries a content hash: a changed sound never plays from a stale cache.
+import compareClickUrl from "@/assets/compare-click.wav";
+
+export const COMPARE_CLICK_URL = compareClickUrl;
 let context: AudioContext | undefined;
 let click: Promise<AudioBuffer | null> | undefined;
 let decoded: AudioBuffer | null = null;
