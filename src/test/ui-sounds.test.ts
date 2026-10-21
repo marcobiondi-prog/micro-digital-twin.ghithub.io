@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); Reflect.deleteProperty(navigator, "maxTouchPoints"); });
+
+/** Installed app on a touch device with the given screen. */
+const device = ({ installed = true, touch = true, width = 400, height = 800 } = {}) => {
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: installed, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  Object.defineProperty(navigator, "maxTouchPoints", { value: touch ? 5 : 0, configurable: true });
+  vi.stubGlobal("ontouchstart", undefined);
+  if (!touch) Reflect.deleteProperty(window, "ontouchstart");
+  vi.stubGlobal("screen", { width, height });
+};
 
 describe("compare card click", () => {
   it("decodes the recorded tap once and plays it softly on every choice", async () => {
@@ -35,6 +44,7 @@ describe("compare card click", () => {
       return { state: "running", destination: {}, decodeAudioData: async () => ({ duration: 0.03 }), createBufferSource: () => ({ ...node(), start: starts }), createGain: () => ({ ...node(), gain: { value: 1 } }) };
     }));
     vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1]), { headers: { "content-type": "audio/wav" } })));
+    device();
     const { installUiClicks } = await import("@/lib/ui-sounds");
     document.body.innerHTML = '<button id="b"><span id="inner">Ok</span></button><button id="off" disabled>No</button><a id="nav" href="/casi" style="display:inline-flex">Casi</a><p><a id="text" href="/fonti">fonte</a></p><div data-no-ui-click><button id="cam">Scatta</button></div><div id="plain">testo</div>';
     const stop = installUiClicks();
@@ -72,6 +82,19 @@ describe("compare card click", () => {
     stop();
     press("inner");
     expect(starts).toHaveBeenCalledTimes(6);
+  });
+  it("plays only in the installed app on touch devices: phone volume, softer on tablets, off on desktop and in the browser", async () => {
+    vi.resetModules();
+    const { uiClickVolume, UI_CLICK_VOLUME, TABLET_CLICK_VOLUME } = await import("@/lib/ui-sounds");
+    device({ width: 412, height: 915 });
+    expect(uiClickVolume()).toBe(UI_CLICK_VOLUME);
+    device({ width: 1440, height: 960 });
+    expect(uiClickVolume()).toBe(TABLET_CLICK_VOLUME);
+    expect(TABLET_CLICK_VOLUME).toBeLessThan(UI_CLICK_VOLUME);
+    device({ touch: false, width: 1920, height: 1080 });
+    expect(uiClickVolume()).toBe(0);
+    device({ installed: false });
+    expect(uiClickVolume()).toBe(0);
   });
   it("stays silent without Web Audio", async () => {
     vi.resetModules();
