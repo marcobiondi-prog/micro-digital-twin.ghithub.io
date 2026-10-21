@@ -25,7 +25,7 @@ export function preloadCompareClick(): Promise<AudioBuffer | null> {
   return click;
 }
 
-/** Sweet high tap (A6 with a soft E7 overtone over the original click) when a large Compare card is pressed; plays at once when already decoded. */
+/** Low, muffled tap (E5 over the original click, low-passed) when a large Compare card is pressed; plays at once when already decoded. */
 export function playCompareClick(volume = 1): void {
   try {
     const ctx = audioContext();
