@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { ArCamera } from "@/views/ArCamera";
 import { prepareArOrientation } from "@/lib/ar-orientation";
+import { useInstalledApp } from "@/lib/installed-app";
 import { openSystemCamera, prepareSystemCamera, supportsSystemCapture } from "@/lib/system-camera";
 import { SystemCamera } from "@/views/SystemCamera";
 import { supabase } from "@/integrations/supabase/client";
@@ -204,6 +205,8 @@ export function LabMedia({ kind, context }: { kind: "urban" | "vineyard"; contex
     pick(gallery.current);
   }
   const [ar, setAr] = useState<"photo" | "video" | null>(null);
+  // The AI camera runs only in the installed app, never in a web browser tab.
+  const installedApp = useInstalledApp();
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
@@ -374,7 +377,7 @@ export function LabMedia({ kind, context }: { kind: "urban" | "vineyard"; contex
                 : "Modalità ospite: i dati non vengono salvati nel cloud."}
             </p>
             <div className="lab-media-actions simulation-selector-capsule flex flex-nowrap gap-2 rounded-full" role="group" aria-label={`Azioni sui file ${kind === "urban" ? "della piazza" : "del vigneto"}`}>
-              {userId && (
+              {userId && installedApp && (
                 <Button
                   size="sm"
                   variant="secondary"
