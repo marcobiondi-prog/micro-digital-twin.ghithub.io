@@ -7,7 +7,7 @@ export function CameraCenterCapture({ onCapture, disabled, label, tabletOnly = f
   const enabled = useTouchCenterCapture(tabletOnly);
   if (!enabled) return null;
   return <Button variant="ghost" aria-label={`${label} al centro dello schermo`}
-    data-camera-center-capture disabled={disabled} onClick={onCapture}
+    data-camera-center-capture data-no-ui-click disabled={disabled} onClick={onCapture}
     className="absolute left-1/2 top-1/2 z-10 h-40 w-40 -translate-x-1/2 -translate-y-1/2 touch-none rounded-none bg-transparent p-0 hover:bg-transparent active:bg-transparent"
   >
     <span aria-hidden="true" className="camera-viewfinder pointer-events-none relative size-10 text-camera-ink">

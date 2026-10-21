@@ -2,7 +2,7 @@
 - Grids: diagonal 9×6 entry, fluid through tablet, 48px desktop cells, card/70 borders, reduced motion.
 - Lab shares server Google locations/geocoding and browser maps with coordinate markers.
 - Dashboard presentation/loading never mutates or refetches demo data.
-- Every button and button-like link plays the shared ui-sounds tap only in the installed app on touch devices (phones 0.75, tablets softer, silent on desktop and in browser tabs): mouse on button-down, touch/pen only on activation (click, never on touch-down or scroll), keyboard on click; camera dialogs opt out with data-no-ui-click.
+- Every button and button-like link plays the shared ui-sounds tap only in the installed app on touch devices (phones 0.75, tablets softer, silent on desktop and in browser tabs): mouse on button-down, touch/pen only on activation (click, never on touch-down or scroll), keyboard on click; the AI camera taps too, except shutter/record/scan (own sounds), which opt out with data-no-ui-click like the system camera.
 - Ring animates; mascot skips initial load/reduced motion; sounds never block; Recharts respects reduced motion without changing values.
 - Lab has touch-friendly grids; vineyard scope syncs comparison, grid and controls.
 - Keep pill selectors on one swipeable row; auto-reveal the selected option on small screens.
