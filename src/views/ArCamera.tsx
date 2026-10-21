@@ -22,7 +22,6 @@ import { tutorialSwipeStep } from "@/lib/ar-tutorial-swipe";
 import { CameraCenterCapture } from "@/views/CameraCenterCapture";
 import { CameraCaptureControl } from "@/views/CameraCaptureControl";
 import { playCameraSound, startScanLoop } from "@/lib/camera-sounds";
-import { hapticTick, SCAN_HAPTIC_IN, SCAN_HAPTIC_OUT } from "@/lib/haptics";
 import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 
 type Mode = "photo" | "video";
@@ -421,13 +420,8 @@ export function ArCamera({
       return n;
     });
 
-  // Scan loop sound with growing/fading vibration: only while an analysis runs in an open camera, always stopped.
-  useEffect(() => {
-    if (!scanning || !mode) return;
-    hapticTick(SCAN_HAPTIC_IN);
-    const stop = startScanLoop(1.8);
-    return () => { stop(); hapticTick(SCAN_HAPTIC_OUT); };
-  }, [scanning, mode]);
+  // Scan loop sound: runs only while an analysis is in progress in an open camera, and always stops.
+  useEffect(() => (scanning && mode ? startScanLoop(1.8) : undefined), [scanning, mode]);
 
   const scan = async () => {
     const c = canvasRef.current;
