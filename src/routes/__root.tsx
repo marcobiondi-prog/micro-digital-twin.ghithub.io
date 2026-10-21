@@ -311,8 +311,10 @@ function RootComponent() {
     // Android tablets in desktop mode and by Windows touch (Surface), so pinch is also blocked
     // here: iOS gesture events, iOS two-finger scale moves, and the ctrl+wheel that touchpad and
     // touchscreen pinch produce on touch devices (styles.css adds touch-action: pan-x pan-y).
-    const block = (e: Event) => e.preventDefault();
-    const scaleMove = (e: TouchEvent) => { const scale = (e as TouchEvent & { scale?: number }).scale; if (e.touches.length > 1 && scale !== undefined && scale !== 1) e.preventDefault(); };
+    // Interactive maps ([data-map-gestures], the 3D view) keep their own pinch and rotate.
+    const inMap = (e: Event) => e.target instanceof Element && e.target.closest("[data-map-gestures]") !== null;
+    const block = (e: Event) => { if (!inMap(e)) e.preventDefault(); };
+    const scaleMove = (e: TouchEvent) => { const scale = (e as TouchEvent & { scale?: number }).scale; if (!inMap(e) && e.touches.length > 1 && scale !== undefined && scale !== 1) e.preventDefault(); };
     const pinchWheel = (e: WheelEvent) => { if (e.ctrlKey && isTouchDevice()) e.preventDefault(); };
     document.addEventListener("gesturestart", block);
     document.addEventListener("gesturechange", block);
