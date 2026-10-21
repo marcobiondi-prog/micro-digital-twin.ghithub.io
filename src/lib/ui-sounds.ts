@@ -23,7 +23,7 @@ export function preloadCompareClick(): Promise<AudioBuffer | null> {
 }
 
 /** Single soft tap when a large Compare card is chosen. */
-export function playCompareClick(volume = 0.8): void {
+export function playCompareClick(volume = 1): void {
   try {
     const ctx = audioContext();
     if (!ctx) return;

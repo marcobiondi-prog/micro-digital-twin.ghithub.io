@@ -25,7 +25,7 @@ describe("compare card click", () => {
     expect(fetcher).toHaveBeenCalledOnce();
     expect(fetcher).toHaveBeenCalledWith(COMPARE_CLICK_URL);
     expect(starts).toHaveBeenCalledTimes(2);
-    expect(gains).toEqual([0.8, 0.8]);
+    expect(gains).toEqual([1, 1]);
   });
   it("stays silent without Web Audio", async () => {
     vi.resetModules();
