@@ -162,8 +162,9 @@ export function ArCamera({
     else setTorchError("Impossibile attivare il flash su questo dispositivo.");
     setTorchBusy(false);
   };
-  // Bark browns help find urban trunks; vine leaves and canopy are judged on green only.
-  const barkCounts = arFocusOption(kind, target).id === "tree";
+  // The reticle follows greens and bark browns (trunks); the scan gate for vine leaf/canopy
+  // counts green alone, so wooden furniture moves the reticle but never unlocks the AI.
+  const greenLockRef = useRef(false);
   useEffect(() => {
     if (!mode || !ready) return;
     const sample = document.createElement("canvas");
@@ -171,6 +172,8 @@ export function ArCamera({
     if (!g) return;
     let box = SEARCH_BOX;
     let hits = 0, misses = 0, locked = false;
+    let greenHits = 0, greenMisses = 0;
+    greenLockRef.current = false;
     const tick = () => {
       const video = videoRef.current, view = canvasRef.current;
       if (document.hidden || scanningRef.current || !video?.videoWidth || !view?.clientWidth) return;
@@ -178,8 +181,12 @@ export function ArCamera({
       if (sample.width !== W || sample.height !== H) { sample.width = W; sample.height = H; }
       // Stesso ritaglio "a riempimento" dell'anteprima: il mirino coincide con ciò che si vede.
       drawCameraVideo(g, video, W, H, -rotationRef.current);
-      const found = findSubject(g.getImageData(0, 0, W, H).data, W, H, locked ? box : null, { bark: barkCounts });
+      const pixels = g.getImageData(0, 0, W, H).data;
+      const found = findSubject(pixels, W, H, locked ? box : null);
       if (found) { hits++; misses = 0; } else { misses++; hits = 0; }
+      if (findSubject(pixels, W, H, null, { bark: false })) { greenHits++; greenMisses = 0; } else { greenMisses++; greenHits = 0; }
+      if (!greenLockRef.current && greenHits >= 2) greenLockRef.current = true;
+      if (greenLockRef.current && greenMisses >= 4) greenLockRef.current = false;
       if (!locked && hits >= 2) locked = true;
       if (locked && misses >= 4) locked = false;
       box = smoothBox(box, found && (locked || hits > 0) ? found : locked ? box : SEARCH_BOX, locked ? 0.45 : 0.3);
@@ -188,8 +195,8 @@ export function ArCamera({
     };
     tick();
     const id = window.setInterval(tick, 110);
-    return () => { window.clearInterval(id); setSubject(SEARCH_BOX); setSubjectLocked(false); };
-  }, [mode, ready, barkCounts]);
+    return () => { window.clearInterval(id); setSubject(SEARCH_BOX); setSubjectLocked(false); greenLockRef.current = false; };
+  }, [mode, ready]);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const rotationRef = useRef(0);
   const [viewport, setViewport] = useState({ width: 0, height: 0, rotation: 0, landscape: false });
@@ -448,7 +455,7 @@ export function ArCamera({
     try {
       // A vegetation target with no vegetation in the frame never calls the AI: a short visible scan
       // (sweep and sound) confirms the tap, then it stops with the section's message.
-      const nothingToScan = scanPrecheck(kind, target, subjectLocked);
+      const nothingToScan = scanPrecheck(kind, target, arFocusOption(kind, target).id === "tree" ? subjectLocked : greenLockRef.current);
       if (nothingToScan) {
         playCameraSound("scan-start", 1.8);
         await new Promise((resolve) => window.setTimeout(resolve, PRECHECK_SCAN_MS));
