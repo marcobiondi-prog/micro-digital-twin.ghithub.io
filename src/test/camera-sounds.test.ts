@@ -14,26 +14,28 @@ describe("camera sounds", () => {
         state: "running", currentTime: 0, sampleRate: 48000, destination: {},
         createBuffer: () => ({ getChannelData: () => new Float32Array(5760) }),
         createBufferSource: node,
-        createBiquadFilter: () => ({ ...node(), frequency: { value: 0 } }),
+        createBiquadFilter: () => ({ ...node(), frequency: { set value(v: number) { frequencies.push(v); } } }),
         createGain: () => ({ ...node(), gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: (value: number) => peaks.push(value), exponentialRampToValueAtTime: vi.fn() } }),
         createOscillator: () => ({ ...node(), frequency: { set value(v: number) { frequencies.push(v); } } }),
       };
     });
     vi.stubGlobal("AudioContext", Audio);
     playCameraSound("shutter");
-    expect(starts).toHaveBeenCalledTimes(1);
+    expect(starts).toHaveBeenCalledTimes(3);
+    expect(frequencies).toEqual([3200, 2000, 120]);
+    frequencies.length = 0;
     playCameraSound("video-start");
     expect(frequencies).toEqual([660, 880]);
     playCameraSound("video-stop");
     expect(frequencies).toEqual([660, 880, 880, 660]);
-    expect(starts).toHaveBeenCalledTimes(5);
+    expect(starts).toHaveBeenCalledTimes(7);
     expect(Audio).toHaveBeenCalledOnce();
     peaks.length = 0;
     playCameraSound("shutter", 1.8);
-    expect(peaks[0]).toBeCloseTo(0.324);
+    expect(peaks.slice(0, 3).map((peak) => Math.round(peak * 100) / 100)).toEqual([0.9, 0.72, 0.36]);
     playCameraSound("video-start", 1.8);
     playCameraSound("video-stop", 1.8);
-    expect(peaks.slice(1)).toEqual([0.216, 0.216, 0.216, 0.216]);
+    expect(peaks.slice(3)).toEqual([0.216, 0.216, 0.216, 0.216]);
   });
   it("plays distinct AI scan start, result and failure cues", () => {
     const frequencies: number[] = [];

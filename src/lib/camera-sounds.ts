@@ -22,24 +22,38 @@ export function playCameraSound(sound: CameraSound, volume = 1): void {
       const now = context.currentTime;
       const level = Math.min(2, Math.max(0, volume));
       if (sound === "shutter") {
-        const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 0.12), context.sampleRate);
-        const samples = buffer.getChannelData(0);
-        for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-        const source = context.createBufferSource();
-        source.buffer = buffer;
-        const filter = context.createBiquadFilter();
-        filter.type = "highpass";
-        filter.frequency.value = 1400;
-        const gain = context.createGain();
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(0.18 * level, now + 0.003);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
-        gain.gain.setValueAtTime(0.12 * level, now + 0.055);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-        source.connect(filter).connect(gain).connect(context.destination);
-        source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
-        source.start(now);
-        source.stop(now + 0.12);
+        // Mechanical "clic-clac": two filtered noise bursts plus a low mirror thunk, loud enough for phone speakers.
+        const burst = (at: number, length: number, frequency: number, peak: number) => {
+          const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * length), context.sampleRate);
+          const samples = buffer.getChannelData(0);
+          for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+          const source = context.createBufferSource();
+          source.buffer = buffer;
+          const filter = context.createBiquadFilter();
+          filter.type = "bandpass";
+          filter.frequency.value = frequency;
+          const gain = context.createGain();
+          gain.gain.setValueAtTime(0.0001, at);
+          gain.gain.linearRampToValueAtTime(Math.min(1, peak * level), at + 0.002);
+          gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+          source.connect(filter).connect(gain).connect(context.destination);
+          source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
+          source.start(at);
+          source.stop(at + length);
+        };
+        burst(now, 0.035, 3200, 0.5);
+        burst(now + 0.075, 0.06, 2000, 0.4);
+        const thunk = context.createOscillator();
+        const body = context.createGain();
+        thunk.type = "triangle";
+        thunk.frequency.value = 120;
+        body.gain.setValueAtTime(0.0001, now + 0.075);
+        body.gain.linearRampToValueAtTime(Math.min(1, 0.2 * level), now + 0.08);
+        body.gain.exponentialRampToValueAtTime(0.0001, now + 0.17);
+        thunk.connect(body).connect(context.destination);
+        thunk.onended = () => { thunk.disconnect(); body.disconnect(); };
+        thunk.start(now + 0.075);
+        thunk.stop(now + 0.18);
         return;
       }
       const { tones, gap, wave } = CUES[sound];
