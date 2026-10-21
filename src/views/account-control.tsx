@@ -300,7 +300,7 @@ export function AccountControl() {
               </form>
               {mode === "signin" && <Button variant="link" className="h-auto px-0" onClick={() => changeMode("reset")}>Password dimenticata?</Button>}
               {mode === "reset" && <Button variant="link" className="h-auto px-0" onClick={() => changeMode("signin")}>Torna all'accesso</Button>}
-              {mode !== "reset" && googleEnabled && <><div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />oppure<span className="h-px flex-1 bg-border" /></div><Button variant="outline" className="w-full" disabled={pending} onClick={() => void googleSignIn()}><GoogleLogo />Continua con Google</Button></>}
+              {mode !== "reset" && googleEnabled && <><div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />oppure<span className="h-px flex-1 bg-border" /></div><Button variant="outline" className="w-full" disabled={pending} onClick={() => void googleSignIn()}><GoogleLogo />{mode === "signup" ? "Registrati con Google" : "Accedi con Google"}</Button></>}
               <Button variant="ghost" className="w-full" onClick={enterGuest}>Continua come ospite</Button>
             </section>
           )}
