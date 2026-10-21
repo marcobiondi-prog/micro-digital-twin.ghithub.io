@@ -14,7 +14,7 @@ export type LabState = {
 
 const KEY = "micro-digital-twin-lab";
 const defaults = (): LabState => ({
-  urban: { trees: 6, permeable: 20, shade: 15, location: { label: "Piazza Vittorio Emanuele II · Campobasso · Palazzo San Giorgio (Municipio)", lat: 41.5603, lng: 14.6627 }, treeCells: null, permeableCells: null, shadeCells: null },
+  urban: { trees: 6, permeable: 20, shade: 15, location: { label: "Piazza Vittorio Emanuele II · Campobasso · Molise", lat: 41.5584, lng: 14.6596 }, treeCells: null, permeableCells: null, shadeCells: null },
   vineyard: { zones: vineZones.map((z) => ({ temperature: z.temp, moisture: z.moist, wind: z.wind, rain: false })), phase: "Invaiatura" as Pheno, selected: 2, allZones: false, location: { label: "Colline del Molise", lat: 41.83, lng: 14.98 } },
 });
 
