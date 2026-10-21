@@ -1,6 +1,6 @@
 - Heat views use ThermalGrid wave/gradient/island/influence, thermal switch and five-step legend.
 - Grids: diagonal 9×6 entry, fluid through tablet, 48px desktop cells, card/70 borders, reduced motion.
-- Lab shares server Google locations/geocoding and browser maps with coordinate markers; with the browser key a 2D/3D switch loads the photorealistic maps3d view (lazy, Maps JS + Map Tiles API) in a panel that grows on 3D and shrinks back before returning to 2D, 2D stays default.
+- Lab shares server Google locations/geocoding and browser maps with coordinate markers; with the browser key a 2D/3D switch loads the photorealistic maps3d view (lazy, Maps JS + Map Tiles API) in a panel that grows on 3D and shrinks back before returning to 2D (camera re-frames on resize via models/map-3d-camera.ts, plus a recenter button), 2D stays default.
 - Dashboard presentation/loading never mutates or refetches demo data.
 - Every button and button-like link plays the shared ui-sounds tap only in the installed app on touch devices (phones 0.75, tablets softer, silent on desktop and in browser tabs): mouse on button-down, touch/pen only on activation (click, never on touch-down or scroll), keyboard on click; the AI camera taps too, except shutter/record/scan (own sounds), which opt out with data-no-ui-click like the system camera.
 - Ring animates; mascot skips initial load/reduced motion; sounds never block; Recharts respects reduced motion without changing values.

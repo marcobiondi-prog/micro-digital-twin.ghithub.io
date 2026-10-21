@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { Crosshair, LoaderCircle } from "lucide-react";
+import { frameCamera, type Camera } from "@/models/map-3d-camera";
 
 /**
  * Photorealistic 3D view of the selected place (Google Maps JavaScript API, `maps3d`
@@ -8,6 +9,7 @@ import { LoaderCircle } from "lucide-react";
  */
 type Maps3D = { Map3DElement: new (options: Record<string, unknown>) => HTMLElement; Marker3DElement: new (options: Record<string, unknown>) => HTMLElement };
 type GoogleMaps = { maps: { importLibrary: (name: string) => Promise<unknown> } };
+type Map3D = HTMLElement & Partial<Camera> & { gestureHandling?: string; flyCameraTo?: (options: { endCamera: Camera; durationMillis: number }) => void };
 
 let loader: Promise<Maps3D> | undefined;
 
@@ -26,30 +28,56 @@ function loadMaps3D(key: string): Promise<Maps3D> {
   return loader;
 }
 
+function applyCamera(map: Map3D, camera: Camera, animate: boolean) {
+  if (animate && map.flyCameraTo) { map.flyCameraTo({ endCamera: camera, durationMillis: 900 }); return; }
+  Object.assign(map, camera);
+}
+
 export function LocationMap3D({ lat, lng, label, apiKey }: { lat: number; lng: number; label: string; apiKey: string }) {
   const host = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<Map3D | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const recenter = (animate: boolean) => {
+    const map = mapRef.current;
+    if (map && host.current) applyCamera(map, frameCamera(lat, lng, host.current.clientHeight), animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  };
   useEffect(() => {
     let cancelled = false;
     const el = host.current;
     setState("loading");
     loadMaps3D(apiKey).then(({ Map3DElement, Marker3DElement }) => {
       if (cancelled || !el) return;
-      // Oblique view from ~350 m, centred on the reference point, so buildings and trees read in depth.
-      const map = new Map3DElement({ center: { lat, lng, altitude: 0 }, range: 350, tilt: 62, heading: 20, mode: "HYBRID" });
+      const map = new Map3DElement({ ...frameCamera(lat, lng, el.clientHeight), mode: "HYBRID" }) as Map3D;
       map.style.cssText = "display:block;width:100%;height:100%;touch-action:none";
       // GREEDY: one finger moves the camera; the AUTO default turns cooperative inside a
       // scrollable page and asks for two fingers. Set as a property so older builds ignore it.
-      (map as HTMLElement & { gestureHandling?: string }).gestureHandling = "GREEDY";
+      map.gestureHandling = "GREEDY";
       map.append(new Marker3DElement({ position: { lat, lng }, label }));
       el.replaceChildren(map);
+      mapRef.current = map;
       setState("ready");
     }).catch(() => { if (!cancelled) setState("error"); });
-    return () => { cancelled = true; el?.replaceChildren(); };
+    return () => { cancelled = true; mapRef.current = null; el?.replaceChildren(); };
   }, [lat, lng, label, apiKey]);
+  // The panel grows when 3D opens (and on rotation): re-frame the place once the size settles.
+  useEffect(() => {
+    const el = host.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let timer: number | undefined;
+    let last = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (Math.abs(el.clientHeight - last) < 4) return;
+      last = el.clientHeight;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => recenter(false), 120);
+    });
+    observer.observe(el);
+    return () => { observer.disconnect(); window.clearTimeout(timer); };
+  });
   return <div className="relative h-full w-full overflow-hidden bg-lab-surface">
     {/* touch-none + data-map-gestures: drag, pinch and rotate belong to the 3D map, not to the page. */}
     <div ref={host} data-map-gestures="" className="absolute inset-0 touch-none" aria-label={`Vista 3D di ${label}`} role="img" />
+    {state === "ready" && <button type="button" onClick={() => recenter(true)} aria-label="Ricentra la vista 3D sul punto" className="absolute right-2 top-2 grid size-9 place-items-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-sm backdrop-blur"><Crosshair className="size-4" aria-hidden="true" /></button>}
     {state === "loading" && <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-label="Caricamento vista 3D" /></div>}
     {state === "error" && <p role="status" className="absolute inset-0 grid place-items-center px-3 text-center text-xs text-muted-foreground">Vista 3D non disponibile: abilita Maps JavaScript API e Map Tiles API sulla chiave browser.</p>}
   </div>;
