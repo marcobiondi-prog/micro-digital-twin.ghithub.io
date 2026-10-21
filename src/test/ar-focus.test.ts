@@ -27,4 +27,11 @@ describe("AI camera per tab", () => {
     expect(arFocusOption("urban", "ground").phases[0].status).toMatch(/pavimentazione/);
     expect(arFocusOption("vineyard", "interrow").phases[1].status).toMatch(/compattamento/);
   });
+  it("words the result panel for each section", () => {
+    const all = Object.values(AR_FOCUS).flat();
+    expect(new Set(all.map(o => o.summary.title)).size).toBe(all.length);
+    expect(new Set(all.map(o => o.summary.empty)).size).toBe(all.length);
+    for (const o of all) expect(o.summary.note).toMatch(/temperatura non misurata/);
+    expect(arFocusOption("urban", "ground").summary.empty).toBe("Suolo non classificato");
+  });
 });

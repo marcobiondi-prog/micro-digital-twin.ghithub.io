@@ -153,6 +153,7 @@ export function ArCamera({
   // Each section names its own scan steps (urban trees/ground, vineyard leaf/canopy/interrow).
   const phaseText = arFocusOption(kind, target).phases[scanPhase === "leaf" ? 0 : 1];
   const scanStatus = phaseText.status;
+  const summaryText = arFocusOption(kind, target).summary;
   const toggleTorch = async () => {
     if (torchBusy || !torchSupported || scanning) return;
     setTorchBusy(true); setTorchError(null);
@@ -621,7 +622,7 @@ export function ArCamera({
     thermalMin ? (
       <Button type="button" variant="ghost" data-camera-controls className="ar-thermal-summary ar-thermal-summary-min"
         onClick={() => setThermalMin(false)} aria-label="Espandi stima termica" title="Espandi stima termica">
-        <Flame className="size-4 shrink-0" /><span>Stima termica{species ? ` · ${species.commonName}` : " · specie non identificata"}{count > 0 && species?.cooling ? ` · ≈ −${coolingNow.toFixed(1)} °C` : ""}</span><ChevronUp className="size-3.5" />
+        <Flame className="size-4 shrink-0" /><span>{summaryText.title}{species ? ` · ${species.commonName}` : ` · ${summaryText.empty.toLowerCase()}`}{count > 0 && species?.cooling ? ` · ≈ −${coolingNow.toFixed(1)} °C` : ""}</span><ChevronUp className="size-3.5" />
       </Button>
     ) : (
     <section className="ar-thermal-summary" data-camera-controls aria-label="Risultati termici della scansione" aria-live="polite">
@@ -629,7 +630,7 @@ export function ArCamera({
         <button type="button" className="ar-thermal-info-btn" onClick={() => setThermalInfoOpen(true)}
           aria-label="Come leggere la stima termica" title="Come leggere la stima termica">
           <Flame className="size-4 shrink-0" />
-        </button><span>Stima termica{species ? ` · ${species.commonName}` : ""}{count > 0 ? ` · ×${count}` : ""}</span>
+        </button><span>{summaryText.title}{species ? ` · ${species.commonName}` : ""}{count > 0 ? ` · ×${count}` : ""}</span>
         <Button type="button" variant="ghost" size="icon" onClick={() => setThermalMin(true)}
           aria-label="Minimizza stima termica" title="Minimizza stima termica"
           className="ml-auto grid size-7 shrink-0 place-items-center rounded-full">
@@ -641,7 +642,7 @@ export function ArCamera({
         <div><dt>Per esemplare</dt><dd>{species.cooling ? `≈ −${species.cooling.deltaT.toFixed(1)} °C` : "n.d."}</dd></div>
         <div><dt>Ombreggiatura</dt><dd>{species.cooling ? `≈ ${Math.round(species.cooling.shadeM2)} m²` : "n.d."}</dd></div>
       </dl>}
-      {!species && <div className="ar-thermal-note"><p className="font-semibold">Pianta non identificata</p><p>{found ?? "Inquadra una foglia da vicino e avvia la scansione."}</p></div>}
+      {!species && <div className="ar-thermal-note"><p className="font-semibold">{summaryText.empty}</p><p>{found ?? summaryText.idle}</p></div>}
       {identificationBadge}
       {(species?.cooling || count > thermalEstimate.unknown) && <dl className="ar-thermal-values">
         <div><dt>{"Riduzione temperatura"}</dt><dd>≈ −{coolingNow.toFixed(1)} °C</dd></div>
@@ -649,7 +650,7 @@ export function ArCamera({
       </dl>}
       {thermalEstimate.unknown > 0 && <p className="ar-thermal-note">{thermalEstimate.unknown} senza stima di specie</p>}
       {survey && <p className="ar-thermal-exposure">{survey.heatNote}</p>}
-      <p className="ar-thermal-note">Simulazione da chioma tipica · massimo −3 °C · ombre sovrapponibili · temperatura non misurata</p>
+      <p className="ar-thermal-note">{summaryText.note}</p>
     </section>
     )
   );
