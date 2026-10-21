@@ -25,7 +25,7 @@ export function preloadCompareClick(): Promise<AudioBuffer | null> {
   return click;
 }
 
-/** Low, muffled tap (E5 over the original click, low-passed) when a large Compare card is pressed; plays at once when already decoded. */
+/** Keyboard-style tap (like Gboard keys or the PSP menu): a tiny noise tick, a short tonal body and a faint knock, ~45 ms; plays at once when already decoded. */
 export function playCompareClick(volume = 1): void {
   try {
     const ctx = audioContext();
