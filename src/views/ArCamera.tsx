@@ -420,7 +420,7 @@ export function ArCamera({
       return n;
     });
 
-  // Scanning hum: runs only while an analysis is in progress in an open camera, and always stops.
+  // Scan loop sound: runs only while an analysis is in progress in an open camera, and always stops.
   useEffect(() => (scanning && mode ? startScanLoop(1.8) : undefined), [scanning, mode]);
 
   const scan = async () => {

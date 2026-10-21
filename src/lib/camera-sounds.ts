@@ -80,7 +80,7 @@ export function playCameraSound(sound: CameraSound, volume = 1): void {
 const SCAN_SWEEP_SECONDS = 3.6;
 /** Optional recorded scan loop; without it (or if it fails to decode) the synthesized hum plays. */
 export const SCAN_LOOP_URL = "/sounds/scan-loop.mp3";
-const FADE_IN = 0.6, FADE_OUT = 0.5;
+const FADE_IN = 1, FADE_OUT = 0.9;
 let scanLoop: Promise<AudioBuffer | null> | undefined;
 
 function loadScanLoop(context: AudioContext): Promise<AudioBuffer | null> {
