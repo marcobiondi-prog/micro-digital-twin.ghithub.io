@@ -874,7 +874,8 @@ export function ArCamera({
             <div data-camera-hud className="ar-camera-topbar">
               <div className="ar-camera-actions flex shrink-0 gap-1" data-camera-controls>
                 <div className="ar-focus-options" role="radiogroup" aria-label={kind === "urban" ? "Obiettivo camera urbana" : "Obiettivo camera vitivinicola"}>
-                  {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} disabled={scanning} className="camera-tool ar-focus-pill" onClick={() => setTarget(o.id)}>{FOCUS_LABELS[o.id]}</Button>)}
+                  {/* Switching section mid-scan stops that scan (like the stop button) and changes target at once. */}
+                  {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} className="camera-tool ar-focus-pill" onClick={() => { cancelScan(); setTarget(o.id); }}>{FOCUS_LABELS[o.id]}</Button>)}
                 </div>
                 {(found || species) && !scanning && <Button variant="ghost" size="sm" aria-label="Mostra esito analisi" title="Mostra esito analisi" className="camera-tool ar-esito-chip" onClick={() => { setToolsOpen(true); setActiveTool("analysis"); setPanelOpen(true); }}><Activity className="size-4 shrink-0" />Esito</Button>}
                 <Button variant="ghost" size="icon" className="camera-tool size-11" aria-label="Guida inquadratura" title="Guida inquadratura" aria-pressed={guideOpen} onClick={() => setGuideOpen(v => !v)}><Info className="size-4" /></Button>
