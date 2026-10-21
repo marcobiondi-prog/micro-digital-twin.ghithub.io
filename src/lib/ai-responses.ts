@@ -69,9 +69,10 @@ async function geminiResponses(body: Record<string, unknown>): Promise<Response>
       const reason = await res.clone().json().catch(() => null) as { error?: { message?: string } } | null;
       if (!/API key/i.test(reason?.error?.message ?? "")) res = await request(false);
     }
-    // An overloaded model (503/500) is retried once on each fallback model, in order.
+    // An overloaded (503/500) or rate-limited (429) model is retried once on each fallback model,
+    // in order: each Gemini model has its own quota.
     for (const fallback of fallbackModels) {
-      if (res.status !== 503 && res.status !== 500) break;
+      if (res.status !== 503 && res.status !== 500 && res.status !== 429) break;
       console.error("Gemini", res.status, "- retrying on", fallback);
       await new Promise((resolve) => setTimeout(resolve, 800));
       res = await request(Boolean(schema), fallback);

@@ -160,6 +160,8 @@ export function ArCamera({
     else setTorchError("Impossibile attivare il flash su questo dispositivo.");
     setTorchBusy(false);
   };
+  // Bark browns help find urban trunks; vine leaves and canopy are judged on green only.
+  const barkCounts = arFocusOption(kind, target).id === "tree";
   useEffect(() => {
     if (!mode || !ready) return;
     const sample = document.createElement("canvas");
@@ -174,7 +176,7 @@ export function ArCamera({
       if (sample.width !== W || sample.height !== H) { sample.width = W; sample.height = H; }
       // Stesso ritaglio "a riempimento" dell'anteprima: il mirino coincide con ciò che si vede.
       drawCameraVideo(g, video, W, H, -rotationRef.current);
-      const found = findSubject(g.getImageData(0, 0, W, H).data, W, H, locked ? box : null);
+      const found = findSubject(g.getImageData(0, 0, W, H).data, W, H, locked ? box : null, { bark: barkCounts });
       if (found) { hits++; misses = 0; } else { misses++; hits = 0; }
       if (!locked && hits >= 2) locked = true;
       if (locked && misses >= 4) locked = false;
@@ -185,7 +187,7 @@ export function ArCamera({
     tick();
     const id = window.setInterval(tick, 110);
     return () => { window.clearInterval(id); setSubject(SEARCH_BOX); setSubjectLocked(false); };
-  }, [mode, ready]);
+  }, [mode, ready, barkCounts]);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const rotationRef = useRef(0);
   const [viewport, setViewport] = useState({ width: 0, height: 0, rotation: 0, landscape: false });
