@@ -7,7 +7,6 @@ import {
   ImagePlus,
   Images,
   Send,
-  Sparkles,
   Trash2,
   Video,
 } from "lucide-react";
@@ -20,6 +19,7 @@ import { SystemCamera } from "@/views/SystemCamera";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/views/health";
 import { Button } from "@/components/ui/button";
+import aiLogo from "@/assets/ai-logo.png";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -388,8 +388,8 @@ export function LabMedia({ kind, context }: { kind: "urban" | "vineyard"; contex
                   className="lab-media-action lab-media-ai"
                   aria-label="Foto in realtà aumentata"
                 >
-                  <Sparkles className="size-4" />
-                  <span>AI</span>
+                  {/* The logo already reads "AI": no extra label beside it. */}
+                  <img src={aiLogo} alt="" aria-hidden="true" draggable={false} className="size-6 shrink-0 select-none" />
                 </Button>
               )}
               <Button
