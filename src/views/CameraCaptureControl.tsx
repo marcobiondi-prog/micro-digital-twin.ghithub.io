@@ -21,7 +21,7 @@ export function CameraCaptureControl({ mode, recording, disabled, onCapture, lef
     <div className="camera-capture-row">
       <div className="camera-capture-side">{left}</div>
       <Button variant="ghost" size="icon" onClick={onCapture} disabled={disabled} aria-label={label} title={label}
-        className="camera-shutter" data-recording={recording} data-mode={mode}>
+        className="camera-shutter" data-no-ui-click data-recording={recording} data-mode={mode}>
         {recording ? <Square className="camera-stop" /> : <span className="camera-shutter-core" />}
       </Button>
       <div className="camera-capture-side">{right}</div>

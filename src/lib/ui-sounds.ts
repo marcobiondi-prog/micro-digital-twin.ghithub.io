@@ -86,8 +86,8 @@ function clickTarget(target: EventTarget | null): Element | null {
 /**
  * One app-wide listener (volume and on/off from uiClickVolume). A mouse taps on button-down; touch and pen tap only when the
  * press activates the control (its click), so touching a button to scroll stays silent.
- * Keyboard activation (click with detail 0) taps on click. Camera views opt out with
- * data-no-ui-click because they have their own shutter and scan sounds.
+ * Keyboard activation (click with detail 0) taps on click. Controls with their own sound
+ * (shutter, record, AI scan) and the system camera opt out with data-no-ui-click.
  */
 export function installUiClicks(): () => void {
   if (typeof document === "undefined") return () => {};

@@ -758,7 +758,7 @@ export function ArCamera({
         if (!o) onClose();
       }}
     >
-      <DialogContent data-no-ui-click
+      <DialogContent
         style={{
           // Finestra sempre stabile a tutto schermo: nessuna rotazione CSS, così l'interfaccia
           // non si sposta né scompare quando il telefono ruota.
@@ -1031,6 +1031,7 @@ export function ArCamera({
                <CameraCaptureControl mode={mode ?? "photo"} recording={recording} ar disabled={!ready || scanning || xrActive} onCapture={mode === "photo" ? shoot : record} left={<div className="camera-labelled-tool ar-scan-tools">
                 <Button variant="ghost" size="icon"
                   type="button"
+                  data-no-ui-click
                   onClick={() => void scan()}
                   disabled={!ready || scanning || recording}
                   aria-label="Scansiona terreno e pianta"
