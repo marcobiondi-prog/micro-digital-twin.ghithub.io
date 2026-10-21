@@ -889,11 +889,11 @@
 }
 
 /* Pulsante AI: faccia bianca pulita in entrambi i temi. Un solo fascio sottile
-   indaco → viola gira sul bordo; a ogni giro un riflesso netto e leggero attraversa
+   azzurro → verde acqua gira sul bordo; a ogni giro un riflesso netto e leggero attraversa
    la faccia dall'angolo in basso a sinistra. Niente aloni sfocati. Ciclo di 4 s. */
 .ai-cta {
-  --ai-indigo: oklch(0.58 0.2 275);
-  --ai-violet: oklch(0.62 0.22 300);
+  --ai-indigo: oklch(0.68 0.15 235);
+  --ai-violet: oklch(0.72 0.13 185);
   position: relative;
   isolation: isolate;
   color: var(--primary);
