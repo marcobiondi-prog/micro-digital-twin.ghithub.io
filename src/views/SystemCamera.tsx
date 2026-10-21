@@ -130,7 +130,7 @@ export function SystemCamera({ mode, onCapture, onClose }: {
 
   return (
     <Dialog open={mode !== null} onOpenChange={(open) => { if (!open) onClose(); }} modal>
-      <DialogContent className="camera-hud inset-0 left-0 top-0 block h-dvh w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-camera-surface p-0 text-camera-ink shadow-none duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none sm:max-h-none sm:overflow-hidden sm:rounded-none [&>button]:hidden" aria-describedby={undefined}>
+      <DialogContent data-no-ui-click className="camera-hud inset-0 left-0 top-0 block h-dvh w-screen max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-none border-0 bg-camera-surface p-0 text-camera-ink shadow-none duration-0 data-[state=open]:animate-none data-[state=closed]:animate-none sm:max-h-none sm:overflow-hidden sm:rounded-none [&>button]:hidden" aria-describedby={undefined}>
         <DialogTitle className="sr-only">{mode === "video" ? "Registra video" : "Scatta foto"}</DialogTitle>
         <CameraCloseGestures onClose={onClose}>
         <div className="absolute inset-0">
