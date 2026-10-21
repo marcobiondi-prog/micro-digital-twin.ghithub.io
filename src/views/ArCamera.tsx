@@ -9,7 +9,7 @@ import { extractPlantPhoto } from "@/views/ar-plant-photo";
 type D = NonNullable<Detection>;
 type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identification: D["identification"] };
 import { type GroundSurvey } from "@/models/ar-recognition";
-import { AR_FOCUS, arFocusOption, defaultArFocus, type ArFocus } from "@/models/ar-focus";
+import { AR_FOCUS, arFocusOption, defaultArFocus, scanMissing, scanPrecheck, type ArFocus } from "@/models/ar-focus";
 import type { ArScene } from "@/views/ar-scene";
 import { Button } from "@/components/ui/button";
 import { drawCameraVideo, freezeCameraFrame, paintArFrame } from "@/lib/ar-frame";
@@ -440,6 +440,9 @@ export function ArCamera({
       setPanelOpen(true);
       setToolsOpen(false); setActiveTool(null);
     try {
+      // A vegetation target with no vegetation in the frame stops here, without calling the AI.
+      const nothingToScan = scanPrecheck(kind, target, subjectLocked);
+      if (nothingToScan) { playCameraSound("scan-fail", 1.8); setFound(nothingToScan); return; }
       const video = videoRef.current;
       if (!video?.videoWidth) return;
       // Recognition and frozen preview preserve the live crop and rotation.
@@ -462,9 +465,21 @@ export function ArCamera({
       const d = r.detection;
       setSoil(r.soil ?? null);
       setSurvey(r.survey ?? null);
+      if (r.error) {
+        playCameraSound("scan-fail", 1.8);
+        setFound(r.error);
+        return;
+      }
+      // Each branch target stops when the result lacks what it looks for (a plant, or the ground).
+      const missing = scanMissing(kind, target, { plant: Boolean(d && (d.type !== "object" || d.species)), ground: Boolean(r.soil || r.survey?.regions.length) });
+      if (missing) {
+        playCameraSound("scan-fail", 1.8);
+        setFound(missing);
+        return;
+      }
       if (!d) {
-        playCameraSound(r.error ? "scan-fail" : "scan-done", 1.8);
-        setFound(r.error ?? (r.soil ? "Terreno analizzato · nessuna specie identificata" : "Nessun oggetto riconosciuto."));
+        playCameraSound("scan-done", 1.8);
+        setFound("Terreno analizzato · nessuna specie identificata");
         return;
       }
       const cutout = d.outline ? await extractPlantPhoto(image, d.outline) : null;

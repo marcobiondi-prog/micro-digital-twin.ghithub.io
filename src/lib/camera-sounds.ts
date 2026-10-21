@@ -78,10 +78,23 @@ export function playCameraSound(sound: CameraSound, volume = 1): void {
 }
 /** Cycle of the ground scan line (styles.css: ar-ground-sweep), so the hum rises and falls with it. */
 const SCAN_SWEEP_SECONDS = 3.6;
+/** Optional recorded scan loop; without it (or if it fails to decode) the synthesized hum plays. */
+export const SCAN_LOOP_URL = "/sounds/scan-loop.mp3";
+const FADE_IN = 0.6, FADE_OUT = 0.5;
+let scanLoop: Promise<AudioBuffer | null> | undefined;
+
+function loadScanLoop(context: AudioContext): Promise<AudioBuffer | null> {
+  scanLoop ??= fetch(SCAN_LOOP_URL)
+    .then((r) => (r.ok && /audio|octet-stream/.test(r.headers.get("content-type") ?? "") ? r.arrayBuffer() : null))
+    .then((data) => (data ? context.decodeAudioData(data) : null))
+    .catch(() => null);
+  return scanLoop;
+}
 
 /**
- * Soft scanning hum while the AI analysis runs: a filtered tone whose pitch follows the
- * sweeping line, fading in and out. Returns a stop function; audio failures never block the scan.
+ * Looping scan sound while the AI analysis runs, faded in and out: the recorded loop when
+ * present, else a soft filtered hum whose pitch follows the sweeping line. Returns a stop
+ * function (safe to call twice); audio failures never block the scan.
  */
 export function startScanLoop(volume = 1): () => void {
   if (typeof window === "undefined") return () => {};
@@ -91,39 +104,65 @@ export function startScanLoop(volume = 1): () => void {
     if (!audio || audio.state === "closed") audio = new Audio();
     const context = audio;
     const level = Math.min(2, Math.max(0, volume));
-    const now = context.currentTime;
-    const tone = context.createOscillator();
-    tone.type = "triangle";
-    tone.frequency.value = 330;
-    // Same period as the line; the negative depth lowers the pitch while the line descends.
-    const sweep = context.createOscillator();
-    sweep.type = "sine";
-    sweep.frequency.value = 1 / SCAN_SWEEP_SECONDS;
-    const depth = context.createGain();
-    depth.gain.value = -70;
-    const filter = context.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = 1200;
-    const gain = context.createGain();
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(0.035 * level, now + 0.4);
-    sweep.connect(depth).connect(tone.frequency);
-    tone.connect(filter).connect(gain).connect(context.destination);
-    tone.start(now);
-    sweep.start(now);
     if (context.state === "suspended") void context.resume().catch(() => {});
+    const master = context.createGain();
+    master.gain.setValueAtTime(0.0001, context.currentTime);
+    master.connect(context.destination);
+    const sources: AudioScheduledSourceNode[] = [];
+    const nodes: AudioNode[] = [master];
     let stopped = false;
+    const fadeIn = (peak: number) => {
+      const at = context.currentTime;
+      master.gain.setValueAtTime(0.0001, at);
+      master.gain.linearRampToValueAtTime(peak, at + FADE_IN);
+    };
+    const hum = () => {
+      const now = context.currentTime;
+      const tone = context.createOscillator();
+      tone.type = "triangle";
+      tone.frequency.value = 330;
+      // Same period as the line; the negative depth lowers the pitch while the line descends.
+      const sweep = context.createOscillator();
+      sweep.type = "sine";
+      sweep.frequency.value = 1 / SCAN_SWEEP_SECONDS;
+      const depth = context.createGain();
+      depth.gain.value = -70;
+      const filter = context.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 1200;
+      sweep.connect(depth).connect(tone.frequency);
+      tone.connect(filter).connect(master);
+      tone.start(now);
+      sweep.start(now);
+      sources.push(tone, sweep);
+      nodes.push(depth, filter);
+      fadeIn(0.035 * level);
+    };
+    void loadScanLoop(context).then((buffer) => {
+      if (stopped) return;
+      try {
+        if (!buffer) { hum(); return; }
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.connect(master);
+        source.start(context.currentTime);
+        sources.push(source);
+        fadeIn(Math.min(1, 0.35 * level));
+      } catch { /* Audio rejection must not block scanning. */ }
+    });
     return () => {
       if (stopped) return;
       stopped = true;
       try {
         const end = context.currentTime;
-        gain.gain.cancelScheduledValues(end);
-        gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), end);
-        gain.gain.exponentialRampToValueAtTime(0.0001, end + 0.25);
-        tone.stop(end + 0.3);
-        sweep.stop(end + 0.3);
-        tone.onended = () => { tone.disconnect(); sweep.disconnect(); depth.disconnect(); filter.disconnect(); gain.disconnect(); };
+        master.gain.cancelScheduledValues(end);
+        master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), end);
+        master.gain.exponentialRampToValueAtTime(0.0001, end + FADE_OUT);
+        sources.forEach((source) => source.stop(end + FADE_OUT + 0.05));
+        const release = () => nodes.concat(sources).forEach((node) => node.disconnect());
+        if (sources[0]) sources[0].onended = release;
+        else release();
       } catch { /* Already stopped or audio gone. */ }
     };
   } catch {
