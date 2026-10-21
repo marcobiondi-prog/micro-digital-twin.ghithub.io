@@ -105,7 +105,15 @@ export const suggestGoogleLocations = createServerFn({ method: "POST" })
       headers: { "X-Goog-Api-Key": googleMapsApiKey, "Content-Type": "application/json", "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text" },
       body: JSON.stringify({ input: data.query, sessionToken: data.sessionToken, languageCode: "it", includedRegionCodes: ["it", "va", "sm"] }),
     });
-    if (!response.ok) { console.error(`Autocomplete failed [${response.status}]: ${await response.text()}`); return { suggestions: [], error: "Suggerimenti non disponibili." }; }
+    if (!response.ok) {
+      const body = await response.text();
+      console.error(`Autocomplete failed [${response.status}]: ${body}`);
+      // Places API (New) is a separate service from Geocoding: a key that only enables the latter is refused here.
+      if (/SERVICE_DISABLED|has not been used|is disabled/.test(body)) return { suggestions: [], error: "Places API (New) non abilitata per la chiave Google Maps." };
+      if (/API_KEY_SERVICE_BLOCKED/.test(body)) return { suggestions: [], error: "La chiave Google Maps non abilita Places API (New)." };
+      if (/API_KEY_HTTP_REFERRER_BLOCKED/.test(body)) return { suggestions: [], error: "La chiave server Google Maps non consente richieste dal server." };
+      return { suggestions: [], error: "Suggerimenti non disponibili." };
+    }
     const body = await response.json() as { suggestions?: Array<{ placePrediction?: { placeId?: string; text?: { text?: string } } }> };
     return { suggestions: (body.suggestions ?? []).flatMap((s) => s.placePrediction?.placeId && s.placePrediction.text?.text ? [{ placeId: s.placePrediction.placeId, text: s.placePrediction.text.text }] : []).slice(0, 6) };
   });

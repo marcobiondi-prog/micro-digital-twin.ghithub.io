@@ -79,22 +79,23 @@ function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSe
   const suggest = useServerFn(suggestGoogleLocations);
   const placeDetails = useServerFn(getGooglePlace);
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
-  const [signedIn, setSignedIn] = useState(false);
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSignedIn(!!data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSignedIn(!!s));
-    return () => sub.subscription.unsubscribe();
-  }, []);
   const [token, setToken] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now())));
   useEffect(() => {
     const text = query.trim();
     if (text.length < 2) { setSuggestions([]); return; }
     let stale = false;
     const timer = window.setTimeout(async () => {
-      try { if (true) { const result = await suggest({ data: { query: text, sessionToken: token } }); if (!stale) setSuggestions(result.suggestions); } else { const result = await suggestOsm({ data: { query: text } }); if (!stale) { setOsmPlaces(Object.fromEntries(result.suggestions.map((s) => [s.placeId, { label: s.label, lat: s.lat, lng: s.lng }]))); setSuggestions(result.suggestions.map(({ placeId, text }) => ({ placeId, text }))); } } } catch { if (!stale) setSuggestions([]); }
+      // Google Places first; when it fails or finds nothing, OpenStreetMap (Photon) keeps suggestions working.
+      const google = await suggest({ data: { query: text, sessionToken: token } }).catch(() => null);
+      if (stale) return;
+      if (google?.suggestions.length) { setSuggestions(google.suggestions); return; }
+      const osm = await suggestOsm({ data: { query: text } }).catch(() => null);
+      if (stale) return;
+      setOsmPlaces((places) => ({ ...places, ...Object.fromEntries((osm?.suggestions ?? []).map((s) => [s.placeId, { label: s.label, lat: s.lat, lng: s.lng }])) }));
+      setSuggestions((osm?.suggestions ?? []).map(({ placeId, text }) => ({ placeId, text })));
     }, 300);
     return () => { stale = true; window.clearTimeout(timer); };
-  }, [query, token, suggest, suggestOsm, signedIn]);
+  }, [query, token, suggest, suggestOsm]);
   const pick = async (item: LocationSuggestion) => {
     setSuggestions([]);
     const osm = osmPlaces[item.placeId];
