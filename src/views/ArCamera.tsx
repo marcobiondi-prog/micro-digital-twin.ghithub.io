@@ -21,7 +21,7 @@ import { CameraCloseGestures } from "@/views/CameraCloseGestures";
 import { tutorialSwipeStep } from "@/lib/ar-tutorial-swipe";
 import { CameraCenterCapture } from "@/views/CameraCenterCapture";
 import { CameraCaptureControl } from "@/views/CameraCaptureControl";
-import { playCameraSound, startScanLoop } from "@/lib/camera-sounds";
+import { playAiShutter, playCameraSound, preloadAiShutter, startScanLoop } from "@/lib/camera-sounds";
 import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 
 type Mode = "photo" | "video";
@@ -436,6 +436,8 @@ export function ArCamera({
 
   // Scan loop sound: runs only while an analysis is in progress in an open camera, and always stops.
   useEffect(() => (scanning && mode ? startScanLoop(1.8) : undefined), [scanning, mode]);
+  // Decode the shutter as soon as the camera opens, so the first photo clicks without delay.
+  useEffect(() => { if (mode) preloadAiShutter(); }, [mode]);
 
   // Clears the previous result (species, soil, survey, specimens, cut-out photo) for a fresh scan.
   const resetResults = () => {
@@ -673,7 +675,7 @@ export function ArCamera({
   const tag = slug ? `-${slug}` : "";
   const shoot = () => {
     if (!ready || !canvasRef.current) return;
-    playCameraSound("shutter", 1.8);
+    playAiShutter();
     // Il fotogramma salvato non contiene la griglia: la nascondiamo solo per lo scatto.
     paintRef.current?.(false);
     const source = canvasRef.current;

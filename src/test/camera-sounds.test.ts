@@ -105,6 +105,35 @@ describe("camera sounds", () => {
     expect(fetcher).toHaveBeenCalledOnce();
     expect(log.loops).toEqual([true]);
   });
+  it("plays the recorded AI shutter once decoded, the synthesized one before", async () => {
+    vi.resetModules();
+    const started: number[] = [];
+    const node = () => ({ connect: vi.fn().mockReturnThis(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() });
+    vi.stubGlobal("AudioContext", vi.fn(function () {
+      return {
+        state: "running", currentTime: 0, sampleRate: 48000, destination: {},
+        decodeAudioData: async () => ({ duration: 0.13 }),
+        createBuffer: () => ({ getChannelData: () => new Float32Array(10) }),
+        createBufferSource: function () { const n = { ...node(), buffer: null as { duration: number } | null }; n.start = vi.fn(() => started.push(n.buffer?.duration ?? -1)); return n; },
+        createBiquadFilter: () => ({ ...node(), frequency: { value: 0 } }),
+        createGain: () => ({ ...node(), gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } }),
+        createOscillator: () => ({ ...node(), frequency: { value: 0 } }),
+      };
+    }));
+    const fetcher = vi.fn(async () => new Response(new Uint8Array([1]), { headers: { "content-type": "audio/wav" } }));
+    vi.stubGlobal("fetch", fetcher);
+    const { playAiShutter, preloadAiShutter, AI_SHUTTER_URL } = await import("@/lib/camera-sounds");
+    playAiShutter();
+    expect(started.length).toBeGreaterThan(0);
+    expect(started).not.toContain(0.13);
+    preloadAiShutter();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    started.length = 0;
+    playAiShutter();
+    expect(started).toEqual([0.13]);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledWith(AI_SHUTTER_URL);
+  });
   it("keeps capture nonblocking when audio is unavailable", async () => {
     vi.resetModules();
     vi.stubGlobal("AudioContext", undefined);
