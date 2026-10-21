@@ -1032,6 +1032,9 @@
 /* Smoother page scrolling: no rubber-band chaining, momentum on touch, and
    anchor targets clear the pinned menu. */
 @layer base {
+  /* Pinch-zoom and double-tap zoom off on every element (scroll containers do not inherit
+     touch-action), while panning keeps working; touch-* utilities still override it. */
+  *, *::before, *::after { touch-action: pan-x pan-y; }
   html {
     overscroll-behavior-y: none;
     scroll-padding-top: calc(var(--nav-h, 0px) + 0.75rem);
