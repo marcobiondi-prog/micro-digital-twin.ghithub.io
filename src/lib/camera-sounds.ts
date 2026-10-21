@@ -1,3 +1,4 @@
+import aiShutterUrl from "@/assets/ai-shutter.wav";
 export type CameraSound = "shutter" | "video-start" | "video-stop" | "scan-start" | "scan-done" | "scan-fail";
 type ToneCue = { tones: number[]; gap: number; wave: OscillatorType };
 // AI scan cues: a quick rising arpeggio, a bright chime when results land, a falling pair on failure.
@@ -76,6 +77,42 @@ export function playCameraSound(sound: CameraSound, volume = 1): void {
     else play();
   } catch { /* Audio rejection must not block capture or scanning. */ }
 }
+/** AI camera shutter: a recorded, decisive phone-style "clic-clac" (two sharp metallic
+ * clicks with a short body), decoded once; falls back to the synthesized shutter. */
+export const AI_SHUTTER_URL = aiShutterUrl;
+let aiShutter: Promise<AudioBuffer | null> | undefined;
+let aiShutterBuffer: AudioBuffer | null = null;
+
+export function preloadAiShutter(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const Audio = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Audio) return;
+    if (!audio || audio.state === "closed") audio = new Audio();
+    const context = audio;
+    aiShutter ??= fetch(AI_SHUTTER_URL)
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .then((data) => (data ? context.decodeAudioData(data) : null))
+      .then((buffer) => (aiShutterBuffer = buffer))
+      .catch(() => null);
+  } catch { /* Audio unavailable: the synthesized shutter stays. */ }
+}
+
+export function playAiShutter(): void {
+  if (typeof window === "undefined") return;
+  try {
+    preloadAiShutter();
+    const context = audio;
+    if (!context || !aiShutterBuffer) { playCameraSound("shutter", 1.8); return; }
+    if (context.state === "suspended") void context.resume().catch(() => {});
+    const source = context.createBufferSource();
+    source.buffer = aiShutterBuffer;
+    source.connect(context.destination);
+    source.onended = () => source.disconnect();
+    source.start();
+  } catch { playCameraSound("shutter", 1.8); }
+}
+
 /** Cycle of the ground scan line (styles.css: ar-ground-sweep), so the hum rises and falls with it. */
 const SCAN_SWEEP_SECONDS = 3.6;
 /** Optional recorded scan loop; without it (or if it fails to decode) the synthesized hum plays. */
