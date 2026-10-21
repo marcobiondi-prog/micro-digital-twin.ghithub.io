@@ -437,20 +437,32 @@ export function ArCamera({
   // Scan loop sound: runs only while an analysis is in progress in an open camera, and always stops.
   useEffect(() => (scanning && mode ? startScanLoop(1.8) : undefined), [scanning, mode]);
 
-  const scan = async () => {
-    const c = canvasRef.current;
-    if (!c || scanBusy.current || !ready) return;
-    const version = scanVersion.current;
-    scanBusy.current = true;
-    scanningRef.current = true;
+  // Clears the previous result (species, soil, survey, specimens, cut-out photo) for a fresh scan.
+  const resetResults = () => {
     countRef.current = 0; setCount(0);
     taps.current = []; plantedCooling.current = [];
     last.current = null;
     setSpecies(null);
     setSoil(null);
     setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
+    setFound(null);
+  };
+  // A new section starts empty: any running scan stops and the previous section's result is cleared.
+  const selectTarget = (next: ArFocus) => {
+    if (next === arFocusOption(kind, target).id) return;
+    cancelScan();
+    resetResults();
+    setTarget(next);
+  };
+
+  const scan = async () => {
+    const c = canvasRef.current;
+    if (!c || scanBusy.current || !ready) return;
+    const version = scanVersion.current;
+    scanBusy.current = true;
+    scanningRef.current = true;
+    resetResults();
       setScanning(true);
-      setFound(null);
       setPanelOpen(true);
       setToolsOpen(false); setActiveTool(null);
     try {
@@ -876,8 +888,8 @@ export function ArCamera({
             <div data-camera-hud className="ar-camera-topbar">
               <div className="ar-camera-actions flex shrink-0 gap-1" data-camera-controls>
                 <div className="ar-focus-options" role="radiogroup" aria-label={kind === "urban" ? "Obiettivo camera urbana" : "Obiettivo camera vitivinicola"}>
-                  {/* Switching section mid-scan stops that scan (like the stop button) and changes target at once. */}
-                  {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} className="camera-tool ar-focus-pill" onClick={() => { cancelScan(); setTarget(o.id); }}>{FOCUS_LABELS[o.id]}</Button>)}
+                  {/* Switching section stops any running scan and clears the previous result. */}
+                  {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} className="camera-tool ar-focus-pill" onClick={() => selectTarget(o.id)}>{FOCUS_LABELS[o.id]}</Button>)}
                 </div>
                 {(found || species) && !scanning && <Button variant="ghost" size="sm" aria-label="Mostra esito analisi" title="Mostra esito analisi" className="camera-tool ar-esito-chip" onClick={() => { setToolsOpen(true); setActiveTool("analysis"); setPanelOpen(true); }}><Activity className="size-4 shrink-0" />Esito</Button>}
                 <Button variant="ghost" size="icon" className="camera-tool size-11" aria-label="Guida inquadratura" title="Guida inquadratura" aria-pressed={guideOpen} onClick={() => setGuideOpen(v => !v)}><Info className="size-4" /></Button>
