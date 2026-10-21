@@ -47,7 +47,7 @@ export function LocationMap3D({ lat, lng, label, apiKey }: { lat: number; lng: n
     }).catch(() => { if (!cancelled) setState("error"); });
     return () => { cancelled = true; el?.replaceChildren(); };
   }, [lat, lng, label, apiKey]);
-  return <div className="relative h-36 w-full overflow-hidden bg-lab-surface sm:h-40">
+  return <div className="relative h-full w-full overflow-hidden bg-lab-surface">
     {/* touch-none + data-map-gestures: drag, pinch and rotate belong to the 3D map, not to the page. */}
     <div ref={host} data-map-gestures="" className="absolute inset-0 touch-none" aria-label={`Vista 3D di ${label}`} role="img" />
     {state === "loading" && <div className="absolute inset-0 grid place-items-center text-xs text-muted-foreground"><LoaderCircle className="size-4 animate-spin" aria-label="Caricamento vista 3D" /></div>}
