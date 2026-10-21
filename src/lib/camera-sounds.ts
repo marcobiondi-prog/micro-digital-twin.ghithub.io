@@ -1,4 +1,13 @@
-export type CameraSound = "shutter" | "video-start" | "video-stop";
+export type CameraSound = "shutter" | "video-start" | "video-stop" | "scan-start" | "scan-done" | "scan-fail";
+type ToneCue = { tones: number[]; gap: number; wave: OscillatorType };
+// AI scan cues: a quick rising arpeggio, a bright chime when results land, a falling pair on failure.
+const CUES: Record<Exclude<CameraSound, "shutter">, ToneCue> = {
+  "video-start": { tones: [660, 880], gap: 0.09, wave: "sine" },
+  "video-stop": { tones: [880, 660], gap: 0.09, wave: "sine" },
+  "scan-start": { tones: [523, 659, 784], gap: 0.05, wave: "triangle" },
+  "scan-done": { tones: [784, 1047, 1319], gap: 0.09, wave: "triangle" },
+  "scan-fail": { tones: [440, 330], gap: 0.12, wave: "sine" },
+};
 let audio: AudioContext | undefined;
 
 /** Browser-safe, local system-style cues; native cameras own their sounds. */
@@ -33,12 +42,12 @@ export function playCameraSound(sound: CameraSound, volume = 1): void {
         source.stop(now + 0.12);
         return;
       }
-      const tones = sound === "video-start" ? [660, 880] : [880, 660];
+      const { tones, gap, wave } = CUES[sound];
       tones.forEach((frequency, index) => {
-        const at = now + index * 0.09;
+        const at = now + index * gap;
         const oscillator = context.createOscillator();
         const gain = context.createGain();
-        oscillator.type = "sine";
+        oscillator.type = wave;
         oscillator.frequency.value = frequency;
         gain.gain.setValueAtTime(0.0001, at);
         gain.gain.linearRampToValueAtTime(0.12 * level, at + 0.008);
@@ -51,5 +60,5 @@ export function playCameraSound(sound: CameraSound, volume = 1): void {
     };
     if (context.state === "suspended") void context.resume().then(play).catch(() => {});
     else play();
-  } catch { /* Audio rejection must not block photo/video capture. */ }
+  } catch { /* Audio rejection must not block capture or scanning. */ }
 }

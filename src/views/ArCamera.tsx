@@ -443,6 +443,7 @@ export function ArCamera({
       const small = freezeCameraFrame(c, video, -rotationRef.current);
       if (!small) return;
       const image = small.toDataURL("image/jpeg", 0.92);
+      playCameraSound("scan-start", 1.8);
       // Same frozen frame, with a second close-up preserving leaf edges and veins.
       const detail = document.createElement("canvas");
       const focus = subjectLocked ? subject : SEARCH_BOX;
@@ -459,6 +460,7 @@ export function ArCamera({
       setSoil(r.soil ?? null);
       setSurvey(r.survey ?? null);
       if (!d) {
+        playCameraSound(r.error ? "scan-fail" : "scan-done", 1.8);
         setFound(r.error ?? (r.soil ? "Terreno analizzato · nessuna specie identificata" : "Nessun oggetto riconosciuto."));
         return;
       }
@@ -480,6 +482,7 @@ export function ArCamera({
       // Nessun aggancio automatico: le copie compaiono solo con il pulsante +.
       setLayers((s) => new Set(s).add("objects"));
       setSpecies(d.species ? { ...d.species, cooling: d.cooling, identification: d.identification } : null);
+      playCameraSound("scan-done", 1.8);
       setFound(d.species
         ? `${d.species.commonName} · ${d.identification?.level === "genus" ? "genere probabile" : "specie probabile"}`
         : `${d.label} · specie incerta, inquadra una foglia da vicino`);
@@ -489,6 +492,7 @@ export function ArCamera({
       const message = error instanceof Error ? error.message : "";
       // The host's own error text (e.g. FUNCTION_INVOCATION_TIMEOUT) names the real cause.
       const detail = message.replace(/<(style|script)[\s\S]*?<\/\1>|<[^>]*>/gi, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+      if (version === scanVersion.current) playCameraSound("scan-fail", 1.8);
       if (version === scanVersion.current) setFound(/Unauthorized/.test(message) ? "Sessione scaduta: esci e accedi di nuovo prima di una nuova analisi." : `Analisi interrotta${detail ? ` (${detail})` : ""}. Controlla la connessione prima di una nuova analisi.`);
     } finally {
       if (version === scanVersion.current) { scanBusy.current = false; scanningRef.current = false; setScanning(false); }
