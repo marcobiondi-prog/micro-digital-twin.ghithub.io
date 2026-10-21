@@ -74,18 +74,27 @@ export function installUiClicks(): () => void {
   if (typeof document === "undefined") return () => {};
   void preloadCompareClick();
   let pointer = "mouse";
+  // The control a touch started on: menus that open on pointer down (Radix triggers) make
+  // the following click land on the page behind them, so the press is matched to its start.
+  let pressed: Element | null = null;
   const down = (e: PointerEvent) => {
     pointer = e.pointerType || "mouse";
+    pressed = pointer === "mouse" ? null : clickTarget(e.target);
     if (pointer === "mouse" && e.button === 0 && clickTarget(e.target)) playCompareClick();
   };
   const click = (e: MouseEvent) => {
-    if ((e.detail === 0 || pointer !== "mouse") && clickTarget(e.target)) playCompareClick();
+    const target = clickTarget(e.target) ?? (pressed?.isConnected ? pressed : null);
+    if ((e.detail === 0 || pointer !== "mouse") && target) playCompareClick();
     pointer = "mouse";
+    pressed = null;
   };
+  const cancel = () => { pressed = null; };
   document.addEventListener("pointerdown", down, { capture: true, passive: true });
   document.addEventListener("click", click, { capture: true, passive: true });
+  document.addEventListener("pointercancel", cancel, { capture: true, passive: true });
   return () => {
     document.removeEventListener("pointerdown", down, { capture: true });
     document.removeEventListener("click", click, { capture: true });
+    document.removeEventListener("pointercancel", cancel, { capture: true });
   };
 }

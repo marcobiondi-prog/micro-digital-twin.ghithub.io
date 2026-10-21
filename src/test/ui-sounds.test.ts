@@ -58,9 +58,20 @@ describe("compare card click", () => {
     expect(starts).toHaveBeenCalledTimes(5);
     document.getElementById("b")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
     expect(starts).toHaveBeenCalledTimes(5);
+    // A menu trigger that opens on touch-down: its click lands on the page behind, still one tap.
+    document.getElementById("inner")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "touch" }));
+    document.getElementById("plain")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    expect(starts).toHaveBeenCalledTimes(6);
+    // Touch on plain text stays silent; a cancelled touch (scroll) forgets its button.
+    document.getElementById("plain")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "touch" }));
+    document.getElementById("plain")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    document.getElementById("inner")!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "touch" }));
+    document.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+    document.getElementById("plain")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    expect(starts).toHaveBeenCalledTimes(6);
     stop();
     press("inner");
-    expect(starts).toHaveBeenCalledTimes(5);
+    expect(starts).toHaveBeenCalledTimes(6);
   });
   it("stays silent without Web Audio", async () => {
     vi.resetModules();
