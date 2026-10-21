@@ -29,6 +29,13 @@ describe("AI camera subject tracker", () => {
     expect(lock!.x + lock!.w / 2).toBeCloseTo(0.5, 1);
   });
 
+  it("ignores brown wood when bark is off (vine leaf and canopy), still finding green", () => {
+    const wood = frame(48, 36, (x, y) => (x >= 20 && x < 28 && y >= 8 && y < 34 ? [110, 80, 55] : [120, 120, 120]));
+    expect(findSubject(wood, 48, 36, null, { bark: false })).toBeNull();
+    const leaf = frame(48, 36, (x, y) => (x >= 20 && x < 28 && y >= 8 && y < 34 ? [40, 160, 40] : [120, 120, 120]));
+    expect(findSubject(leaf, 48, 36, null, { bark: false })).not.toBeNull();
+  });
+
   it("ignores non-green objects such as a red car", () => {
     const data = frame(48, 36, (x, y) => (x >= 10 && x < 30 && y >= 10 && y < 26 ? [200, 30, 30] : [120, 120, 120]));
     expect(findSubject(data, 48, 36)).toBeNull();

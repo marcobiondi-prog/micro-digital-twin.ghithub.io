@@ -7,8 +7,11 @@
 export type SubjectBox = { x: number; y: number; w: number; h: number };
 export type SubjectLock = SubjectBox & { score: number };
 
-/** Find the dominant subject in an RGBA frame; null when nothing stands out. */
-export function findSubject(data: Uint8ClampedArray, width: number, height: number, previous?: SubjectBox | null): SubjectLock | null {
+/**
+ * Find the dominant subject in an RGBA frame; null when nothing stands out. `bark` also scores
+ * muted browns (trunks); leaf and canopy targets turn it off so wooden furniture never locks.
+ */
+export function findSubject(data: Uint8ClampedArray, width: number, height: number, previous?: SubjectBox | null, { bark: withBark = true } = {}): SubjectLock | null {
   const n = width * height;
   if (!n || data.length < n * 4) return null;
   const score = new Float32Array(n);
@@ -20,7 +23,7 @@ export function findSubject(data: Uint8ClampedArray, width: number, height: numb
     const exg = 2 * g - r - b;
     const green = g > r * 1.08 && g > b * 1.08 && exg > 20 ? exg / 255 : 0;
     // Bark and trunks: muted browns (red > green > blue, low saturation), never vivid reds.
-    const bark = r > g && g > b && r - g < 45 && g - b > 6 && r - b > 18 && r < 200 && r > 50 ? Math.min(0.5, (r - b) / 160) : 0;
+    const bark = withBark && r > g && g > b && r - g < 45 && g - b > 6 && r - b > 18 && r < 200 && r > 50 ? Math.min(0.5, (r - b) / 160) : 0;
     score[i] = Math.max(green, bark);
   }
   let mean = 0;

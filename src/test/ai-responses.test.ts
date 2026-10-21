@@ -49,12 +49,19 @@ describe("Gemini behind the Responses helper", () => {
     expect(fetchMock.mock.calls.map(([url]) => String(url).split("/models/")[1]!.split(":")[0])).toEqual(["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash"]);
   });
 
+  it("moves a rate-limited request to the fallback model, which has its own quota", async () => {
+    fetchMock.mockResolvedValueOnce(json({ error: { message: "Resource exhausted" } }, 429)).mockResolvedValueOnce(reply(JSON.stringify(recognition)));
+    expect(JSON.parse(await readArResponse(await cameraRequest()))).toEqual(recognition);
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("gemini-flash-lite-latest");
+  });
+
   it("reports blocked, truncated and throttled replies without applying a result", async () => {
     fetchMock.mockResolvedValueOnce(reply("", "SAFETY"));
     await expect(readArResponse(await cameraRequest())).rejects.toMatchObject({ status: 422 });
     fetchMock.mockResolvedValueOnce(reply("{\"found\":", "MAX_TOKENS"));
     await expect(readArResponse(await cameraRequest())).rejects.toMatchObject({ status: 502 });
-    fetchMock.mockResolvedValueOnce(json({ error: { message: "Resource exhausted" } }, 429));
-    await expect(readArResponse(await cameraRequest())).rejects.toMatchObject({ status: 429, persistent: false });
+    fetchMock.mockReset().mockResolvedValue(json({ error: { message: "Resource exhausted" } }, 429));
+    await expect(readArResponse(await cameraRequest())).rejects.toMatchObject({ status: 429, persistent: false, message: "Troppe richieste al servizio AI, riprova tra poco." });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
