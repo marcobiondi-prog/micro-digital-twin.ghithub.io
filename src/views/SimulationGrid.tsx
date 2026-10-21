@@ -12,6 +12,7 @@ import { vineyardControlValue, updateVineyardControl, type VineyardControl } fro
 import { setUrban, setVineyard, useLab } from "@/models/lab-store";
 import { getGooglePlace, reverseGoogleLocation, searchGoogleLocation, suggestGoogleLocations, type LocationSuggestion, type SearchedLocation } from "@/controllers/geo.functions";
 import { searchOsmLocation, reverseOsmLocation, suggestOsmLocations } from "@/controllers/osm-geo.functions";
+import { photonSuggestions, photonUrl } from "@/models/osm-suggest";
 import { supabase } from "@/integrations/supabase/client";
 import { phenoPhases, vineModel, type Pheno } from "@/models/data";
 import { levelTone, piazzaEstimate, prototypeLevel, vineZones, type AreaKind, type PrototypeId } from "@/models/scenarios";
@@ -79,20 +80,24 @@ function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSe
   const suggest = useServerFn(suggestGoogleLocations);
   const placeDetails = useServerFn(getGooglePlace);
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
+  const [noSuggestions, setNoSuggestions] = useState(false);
   const [token, setToken] = useState(() => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Date.now())));
   useEffect(() => {
     const text = query.trim();
-    if (text.length < 2) { setSuggestions([]); return; }
+    if (text.length < 2) { setSuggestions([]); setNoSuggestions(false); return; }
     let stale = false;
     const timer = window.setTimeout(async () => {
       // Google Places first; when it fails or finds nothing, OpenStreetMap (Photon) keeps suggestions working.
       const google = await suggest({ data: { query: text, sessionToken: token } }).catch(() => null);
       if (stale) return;
-      if (google?.suggestions.length) { setSuggestions(google.suggestions); return; }
-      const osm = await suggestOsm({ data: { query: text } }).catch(() => null);
+      if (google?.suggestions.length) { setSuggestions(google.suggestions); setNoSuggestions(false); return; }
+      let osm = (await suggestOsm({ data: { query: text } }).catch(() => null))?.suggestions ?? [];
+      // Hosting IPs can be refused by Photon: the device then asks it directly (CORS-enabled).
+      if (!osm.length && !stale) osm = await fetch(photonUrl(text), { signal: AbortSignal.timeout(6000) }).then((r) => (r.ok ? r.json() : null)).then((body) => photonSuggestions(body, text)).catch(() => []);
       if (stale) return;
-      setOsmPlaces((places) => ({ ...places, ...Object.fromEntries((osm?.suggestions ?? []).map((s) => [s.placeId, { label: s.label, lat: s.lat, lng: s.lng }])) }));
-      setSuggestions((osm?.suggestions ?? []).map(({ placeId, text }) => ({ placeId, text })));
+      setOsmPlaces((places) => ({ ...places, ...Object.fromEntries(osm.map((s) => [s.placeId, { label: s.label, lat: s.lat, lng: s.lng }])) }));
+      setSuggestions(osm.map(({ placeId, text }) => ({ placeId, text })));
+      setNoSuggestions(!osm.length);
     }, 300);
     return () => { stale = true; window.clearTimeout(timer); };
   }, [query, token, suggest, suggestOsm]);
@@ -125,7 +130,7 @@ function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSe
       if (result.location) { onSelect(result.location); setQuery(""); } else setError(result.error ?? "Zona non trovata.");
     } catch (searchError) { console.error(searchError); setError("Ricerca della zona non disponibile. Riprova tra poco."); } finally { setLoading(false); }
   };
-  return <div className="location-search min-w-0 md:col-span-full"><form onSubmit={submit} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2" role="search"><div className="relative min-w-0"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca località su Google Maps" aria-label="Cerca zona con Google Maps" className="h-11 rounded-lg bg-lab-surface pl-9 pr-3 font-mono" autoComplete="off" aria-autocomplete="list" aria-controls="location-suggestions" />{suggestions.length > 0 && <ul id="location-suggestions" role="listbox" className="absolute inset-x-0 top-12 z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">{suggestions.map((item) => <li key={item.placeId} role="option" aria-selected={false}><Button variant="ghost" type="button" onClick={() => pick(item)} className="flex h-auto min-h-11 w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-left text-sm"><MapPin className="size-4 shrink-0 text-primary" /><span className="min-w-0 whitespace-normal break-words">{item.text}</span></Button></li>)}</ul>}</div><Button type="submit" size="icon" disabled={loading || query.trim().length < 3} aria-label="Cerca zona" className="size-11 shrink-0 rounded-lg">{loading ? <LoaderCircle className="animate-spin" /> : <Search />}</Button><Button type="button" variant="secondary" onClick={locate} disabled={locating} aria-label="Usa la mia posizione" className="h-11 shrink-0 rounded-lg px-3">{locating ? <LoaderCircle className="animate-spin" /> : <LocateFixed />}<span className="hidden sm:inline">La mia posizione</span></Button></form><div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-[minmax(7rem,12rem)_minmax(0,1fr)] sm:items-center md:grid-cols-1 md:items-start lg:grid-cols-[minmax(7rem,12rem)_minmax(0,1fr)] lg:items-center"><div className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0 text-primary" /><div className="min-w-0"><span className="block break-words font-medium text-foreground">{splitLocation(initial.label).name}</span>{splitLocation(initial.label).sub && <span className="block break-words">{splitLocation(initial.label).sub}</span>}<span className="mt-1 block font-mono text-[10px]">{initial.lat.toFixed(4)}, {initial.lng.toFixed(4)}</span></div></div><LocationMapPreview location={initial} /></div>{error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}</div>;
+  return <div className="location-search min-w-0 md:col-span-full"><form onSubmit={submit} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2" role="search"><div className="relative min-w-0"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca località su Google Maps" aria-label="Cerca zona con Google Maps" className="h-11 rounded-lg bg-lab-surface pl-9 pr-3 font-mono" autoComplete="off" aria-autocomplete="list" aria-controls="location-suggestions" />{suggestions.length > 0 && <ul id="location-suggestions" role="listbox" className="absolute inset-x-0 top-12 z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">{suggestions.map((item) => <li key={item.placeId} role="option" aria-selected={false}><Button variant="ghost" type="button" onClick={() => pick(item)} className="flex h-auto min-h-11 w-full items-center justify-start gap-2 rounded-none px-3 py-2 text-left text-sm"><MapPin className="size-4 shrink-0 text-primary" /><span className="min-w-0 whitespace-normal break-words">{item.text}</span></Button></li>)}</ul>}</div><Button type="submit" size="icon" disabled={loading || query.trim().length < 3} aria-label="Cerca zona" className="size-11 shrink-0 rounded-lg">{loading ? <LoaderCircle className="animate-spin" /> : <Search />}</Button><Button type="button" variant="secondary" onClick={locate} disabled={locating} aria-label="Usa la mia posizione" className="h-11 shrink-0 rounded-lg px-3">{locating ? <LoaderCircle className="animate-spin" /> : <LocateFixed />}<span className="hidden sm:inline">La mia posizione</span></Button></form><div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-[minmax(7rem,12rem)_minmax(0,1fr)] sm:items-center md:grid-cols-1 md:items-start lg:grid-cols-[minmax(7rem,12rem)_minmax(0,1fr)] lg:items-center"><div className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"><MapPin className="mt-0.5 size-3.5 shrink-0 text-primary" /><div className="min-w-0"><span className="block break-words font-medium text-foreground">{splitLocation(initial.label).name}</span>{splitLocation(initial.label).sub && <span className="block break-words">{splitLocation(initial.label).sub}</span>}<span className="mt-1 block font-mono text-[10px]">{initial.lat.toFixed(4)}, {initial.lng.toFixed(4)}</span></div></div><LocationMapPreview location={initial} /></div>{noSuggestions && !error && query.trim().length >= 2 && <p role="status" className="mt-2 text-xs text-muted-foreground">Nessun suggerimento: premi Cerca per trovare la zona.</p>}{error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}</div>;
 }
 
 function LocationMapPreview({ location }: { location: SearchedLocation }) {

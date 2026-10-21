@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { SearchedLocation } from "@/controllers/geo.functions";
+import { photonSuggestions, photonUrl, type OsmSuggestion } from "@/models/osm-suggest";
 
 // Ricerca gratuita per ospiti tramite OpenStreetMap (Nominatim): nessun costo Google.
 const UA = { "User-Agent": "MicroDigitalTwin/1.0", "Accept-Language": "it" };
@@ -42,22 +43,13 @@ export const reverseOsmLocation = createServerFn({ method: "POST" })
     } catch { return {}; }
   });
 
-// Suggestions while typing for guests via Photon (OpenStreetMap, built for autocomplete).
-type PhotonFeature = { geometry: { coordinates: [number, number] }; properties: { name?: string; street?: string; housenumber?: string; city?: string; state?: string; countrycode?: string } };
+// Suggestions while typing via Photon (OpenStreetMap, built for autocomplete).
 export const suggestOsmLocations = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ query: z.string().trim().min(2).max(160) }).parse(d))
-  .handler(async ({ data }): Promise<{ suggestions: (SearchedLocation & { placeId: string; text: string })[] }> => {
+  .handler(async ({ data }): Promise<{ suggestions: OsmSuggestion[] }> => {
     try {
-      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(data.query)}&limit=8&lat=41.9&lon=12.5`, { headers: UA });
-      if (!r.ok) return { suggestions: [] };
-      const feats = ((await r.json()) as { features?: PhotonFeature[] }).features ?? [];
-      return { suggestions: feats.filter((f) => ["IT", "VA", "SM"].includes(f.properties.countrycode ?? "")).slice(0, 6).map((f, i) => {
-        const p = f.properties;
-        const street = [p.street, p.housenumber].filter(Boolean).join(" ");
-        const name = p.name || street || data.query;
-        const text = [name, street !== name ? street : "", p.city, p.state].filter(Boolean).join(", ");
-        const [lng, lat] = f.geometry.coordinates;
-        return { placeId: `osm-${i}-${lat}-${lng}`, text, label: text.replace(/, /g, " · "), lat, lng };
-      }) };
-    } catch { return { suggestions: [] }; }
+      const r = await fetch(photonUrl(data.query), { headers: UA, signal: AbortSignal.timeout(6000) });
+      if (!r.ok) { console.error(`Photon [${r.status}]`); return { suggestions: [] }; }
+      return { suggestions: photonSuggestions(await r.json(), data.query) };
+    } catch (error) { console.error("Photon", error); return { suggestions: [] }; }
   });
