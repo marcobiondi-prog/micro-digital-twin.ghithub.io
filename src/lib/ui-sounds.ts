@@ -25,7 +25,7 @@ export function preloadCompareClick(): Promise<AudioBuffer | null> {
   return click;
 }
 
-/** Keyboard-style tap (like Gboard keys or the PSP menu): a bright noise tick, a short tonal body, a faint knock and a high shimmer, ~50 ms; plays at once when already decoded. */
+/** Keyboard-style tap (like Gboard keys or the PSP menu): a bright noise tick, a short tonal body, a faint knock and a high shimmer, played back at double speed (~25 ms); plays at once when already decoded. */
 export function playCompareClick(volume = 1): void {
   try {
     const ctx = audioContext();
