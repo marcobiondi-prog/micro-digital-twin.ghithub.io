@@ -176,7 +176,8 @@ async function recognize(data: z.infer<typeof detectInput>): Promise<DetectResul
         }
       : null;
   if (!p.found || !p.box)
-    return { detection: null, soil, survey, ...(soil ? {} : { error: "Nessun terreno o pianta riconosciuto. Inquadra il suolo e avvia una nuova scansione." }) };
+    // Nothing found is a result, not an error: the camera names what the selected target missed.
+    return { detection: null, soil, survey };
   const c = (n: unknown) => Math.min(1, Math.max(0, Number(n) || 0));
   const num = (n: unknown, lo: number, hi: number, def: number) => {
     const v = Number(n);

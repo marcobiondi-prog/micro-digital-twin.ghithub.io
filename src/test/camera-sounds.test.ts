@@ -57,27 +57,53 @@ describe("camera sounds", () => {
       expect(waves).toEqual(["triangle", "triangle", "triangle", "triangle", "triangle", "triangle", "sine", "sine"]);
     });
   });
-  it("hums while scanning in step with the sweep and fades out once when stopped", async () => {
-    const stops: number[] = [];
-    const frequencies: number[] = [];
-    const ramps: number[] = [];
-    const node = () => ({ connect: vi.fn().mockReturnThis(), disconnect: vi.fn(), start: vi.fn(), stop: (at: number) => stops.push(at) });
-    vi.resetModules();
-    vi.stubGlobal("AudioContext", vi.fn(function () {
+  const scanContext = (log: { stops: number[]; frequencies: number[]; ramps: number[]; loops: boolean[] }) => {
+    const node = () => ({ connect: vi.fn().mockReturnThis(), disconnect: vi.fn(), start: vi.fn(), stop: (at: number) => log.stops.push(at) });
+    return vi.fn(function () {
       return {
         state: "running", currentTime: 2, destination: {},
-        createGain: () => ({ ...node(), gain: { value: 0.06, setValueAtTime: vi.fn(), linearRampToValueAtTime: (v: number) => ramps.push(v), exponentialRampToValueAtTime: vi.fn(), cancelScheduledValues: vi.fn() } }),
+        decodeAudioData: async () => ({ duration: 4 }),
+        createGain: () => ({ ...node(), gain: { value: 0.06, setValueAtTime: vi.fn(), linearRampToValueAtTime: (v: number) => log.ramps.push(v), exponentialRampToValueAtTime: vi.fn(), cancelScheduledValues: vi.fn() } }),
         createBiquadFilter: () => ({ ...node(), frequency: { value: 0 } }),
-        createOscillator: () => ({ ...node(), frequency: { set value(v: number) { frequencies.push(v); } } }),
+        createOscillator: () => ({ ...node(), frequency: { set value(v: number) { log.frequencies.push(v); } } }),
+        createBufferSource: () => ({ ...node(), set loop(v: boolean) { log.loops.push(v); } }),
       };
-    }));
+    });
+  };
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+  it("falls back to a hum in step with the sweep when no recorded loop exists, fading out once", async () => {
+    const log = { stops: [] as number[], frequencies: [] as number[], ramps: [] as number[], loops: [] as boolean[] };
+    vi.resetModules();
+    vi.stubGlobal("AudioContext", scanContext(log));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<!doctype html>", { status: 200, headers: { "content-type": "text/html" } })));
     const { startScanLoop } = await import("@/lib/camera-sounds");
     const stop = startScanLoop(1.8);
-    expect(frequencies).toEqual([330, 1 / 3.6]);
-    expect(ramps[0]).toBeCloseTo(0.063);
+    await flush();
+    expect(log.frequencies).toEqual([330, 1 / 3.6]);
+    expect(log.ramps[0]).toBeCloseTo(0.063);
     stop();
     stop();
-    expect(stops).toEqual([2.3, 2.3]);
+    expect(log.stops).toEqual([2.55, 2.55]);
+  });
+  it("loops the recorded scan sound with a fade in and out when the file is present", async () => {
+    const log = { stops: [] as number[], frequencies: [] as number[], ramps: [] as number[], loops: [] as boolean[] };
+    vi.resetModules();
+    vi.stubGlobal("AudioContext", scanContext(log));
+    const fetcher = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "audio/mpeg" } }));
+    vi.stubGlobal("fetch", fetcher);
+    const { startScanLoop, SCAN_LOOP_URL } = await import("@/lib/camera-sounds");
+    const stop = startScanLoop(1.8);
+    await flush();
+    expect(fetcher).toHaveBeenCalledWith(SCAN_LOOP_URL);
+    expect(log.loops).toEqual([true]);
+    expect(log.frequencies).toEqual([]);
+    expect(log.ramps[0]).toBeCloseTo(0.63);
+    stop();
+    expect(log.stops).toEqual([2.55]);
+    startScanLoop(1.8)();
+    await flush();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(log.loops).toEqual([true]);
   });
   it("keeps capture nonblocking when audio is unavailable", async () => {
     vi.resetModules();
