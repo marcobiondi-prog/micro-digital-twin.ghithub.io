@@ -888,26 +888,25 @@
   .compare-cta-glow::before { opacity: 0; }
 }
 
-/* Pulsante AI: vetro su faccia bianca in entrambi i temi. Il fascio gira sul bordo
-   con uno sfumato lilla → viola elettrico tipico dell'AI; a ogni giro un riflesso
-   lilla attraversa la faccia partendo dall'angolo in basso a sinistra, poi il
-   fascio riprende il giro. Fascio e riflesso condividono il ciclo (3,6 s). */
+/* Pulsante AI: faccia bianca pulita in entrambi i temi. Un solo fascio sottile
+   azzurro → verde acqua gira sul bordo; a ogni giro un riflesso netto e leggero attraversa
+   la faccia dall'angolo in basso a sinistra. Niente aloni sfocati. Ciclo di 4 s. */
 .ai-cta {
-  --ai-lilac: oklch(0.82 0.11 300);
-  --ai-violet: oklch(0.6 0.25 295);
-  --ai-electric: oklch(0.56 0.29 285);
+  --ai-indigo: oklch(0.68 0.15 235);
+  --ai-violet: oklch(0.72 0.13 185);
   position: relative;
   isolation: isolate;
   color: var(--primary);
-  background-image: linear-gradient(180deg, oklch(1 0 0), color-mix(in oklab, var(--ai-lilac) 14%, oklch(1 0 0)));
-  border: 1px solid color-mix(in oklab, var(--ai-violet) 26%, oklch(1 0 0));
-  box-shadow: inset 0 1px 0 oklch(1 0 0), 0 2px 0 color-mix(in oklab, var(--ai-violet) 30%, oklch(0.86 0.02 290)), 0 6px 16px -8px color-mix(in oklab, var(--ai-electric) 55%, transparent);
+  background: oklch(1 0 0);
+  border: 1px solid color-mix(in oklab, var(--ai-indigo) 18%, oklch(1 0 0));
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--ai-indigo) 14%, transparent), 0 6px 14px -8px color-mix(in oklab, var(--ai-violet) 45%, transparent);
   transition: transform 160ms ease, box-shadow 160ms ease;
-  animation: compare-cta-beam 3.6s linear infinite;
+  animation: compare-cta-beam 4s linear infinite;
 }
+.ai-cta:hover { background: oklch(1 0 0); }
 .ai-cta:active {
   transform: translateY(1px);
-  box-shadow: inset 0 1px 0 oklch(1 0 0), 0 1px 0 color-mix(in oklab, var(--ai-violet) 30%, oklch(0.86 0.02 290));
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--ai-indigo) 14%, transparent);
 }
 .ai-cta::before {
   content: "";
@@ -915,7 +914,7 @@
   inset: -1px;
   border-radius: inherit;
   padding: 1.5px;
-  background: conic-gradient(from var(--compare-beam), transparent 0turn 0.42turn, color-mix(in oklab, var(--ai-lilac) 70%, transparent) 0.6turn, var(--ai-violet) 0.72turn, var(--ai-electric) 0.8turn, oklch(0.7 0.2 330) 0.86turn, var(--ai-lilac) 0.93turn, transparent 1turn);
+  background: conic-gradient(from var(--compare-beam), transparent 0turn 0.62turn, color-mix(in oklab, var(--ai-indigo) 60%, transparent) 0.76turn, var(--ai-violet) 0.86turn, transparent 0.96turn);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
@@ -929,40 +928,27 @@
   z-index: -1;
   pointer-events: none;
 }
-/* Alone interno lilla/viola che segue il fascio. */
-.ai-cta-glow::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: conic-gradient(from var(--compare-beam), transparent 0turn 0.44turn, color-mix(in oklab, var(--ai-lilac) 55%, oklch(1 0 0)) 0.7turn, color-mix(in oklab, var(--ai-electric) 40%, oklch(1 0 0)) 0.82turn, color-mix(in oklab, var(--ai-lilac) 55%, oklch(1 0 0)) 0.9turn, transparent 1turn);
-  filter: blur(6px);
-  opacity: 0.6;
-  -webkit-mask: radial-gradient(115% 300% at 50% 50%, transparent 26%, #000 76%);
-  mask: radial-gradient(115% 300% at 50% 50%, transparent 26%, #000 76%);
-  pointer-events: none;
-}
-/* Riflesso: una banda diagonale lilla e bianca che sale dall'angolo in basso a sinistra. */
+/* Riflesso: banda diagonale stretta e chiara, dall'angolo in basso a sinistra. */
 .ai-cta-glow::after {
   content: "";
   position: absolute;
   inset: -60% -30%;
-  background: linear-gradient(60deg, transparent 36%, color-mix(in oklab, var(--ai-lilac) 80%, transparent) 45%, color-mix(in oklab, var(--ai-violet) 55%, oklch(1 0 0)) 50%, color-mix(in oklab, var(--ai-electric) 45%, transparent) 55%, transparent 64%);
+  background: linear-gradient(60deg, transparent 44%, color-mix(in oklab, var(--ai-violet) 16%, transparent) 48%, color-mix(in oklab, var(--ai-indigo) 10%, oklch(1 0 0)) 50%, color-mix(in oklab, var(--ai-violet) 16%, transparent) 52%, transparent 56%);
   transform: translate(-70%, 45%);
   opacity: 0;
-  animation: ai-cta-sheen 3.6s ease-in-out infinite;
+  animation: ai-cta-sheen 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   pointer-events: none;
 }
 @keyframes ai-cta-sheen {
   0% { transform: translate(-70%, 45%); opacity: 0; }
-  6% { opacity: 1; }
-  34% { opacity: 1; }
-  40% { transform: translate(70%, -45%); opacity: 0; }
+  5% { opacity: 1; }
+  28% { opacity: 1; }
+  34% { transform: translate(70%, -45%); opacity: 0; }
   100% { transform: translate(70%, -45%); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ai-cta { animation: none; transition: none; }
   .ai-cta::before,
-  .ai-cta-glow::before,
   .ai-cta-glow::after { animation: none; opacity: 0; }
 }
 
