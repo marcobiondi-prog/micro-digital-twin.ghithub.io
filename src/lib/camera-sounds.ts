@@ -136,7 +136,7 @@ export function startScanLoop(volume = 1): () => void {
       sweep.start(now);
       sources.push(tone, sweep);
       nodes.push(depth, filter);
-      fadeIn(0.035 * level);
+      fadeIn(0.07 * level);
     };
     void loadScanLoop(context).then((buffer) => {
       if (stopped) return;
@@ -148,7 +148,7 @@ export function startScanLoop(volume = 1): () => void {
         source.connect(master);
         source.start(context.currentTime);
         sources.push(source);
-        fadeIn(Math.min(1, 0.35 * level));
+        fadeIn(Math.min(1, 0.6 * level));
       } catch { /* Audio rejection must not block scanning. */ }
     });
     return () => {
