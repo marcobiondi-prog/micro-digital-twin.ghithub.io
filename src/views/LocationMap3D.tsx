@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Crosshair, LoaderCircle } from "lucide-react";
-import { frameCamera, type Camera } from "@/models/map-3d-camera";
+import { frameCamera, groundElevation, type Camera } from "@/models/map-3d-camera";
 
 /**
  * Photorealistic 3D view of the selected place (Google Maps JavaScript API, `maps3d`
@@ -36,23 +36,26 @@ function applyCamera(map: Map3D, camera: Camera, animate: boolean) {
 export function LocationMap3D({ lat, lng, label, apiKey }: { lat: number; lng: number; label: string; apiKey: string }) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map3D | null>(null);
+  const altitude = useRef(0);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const recenter = (animate: boolean) => {
     const map = mapRef.current;
-    if (map && host.current) applyCamera(map, frameCamera(lat, lng, host.current.clientHeight), animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (map && host.current) applyCamera(map, frameCamera(lat, lng, host.current.clientHeight, altitude.current), animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   };
   useEffect(() => {
     let cancelled = false;
     const el = host.current;
     setState("loading");
-    loadMaps3D(apiKey).then(({ Map3DElement, Marker3DElement }) => {
+    Promise.all([loadMaps3D(apiKey), groundElevation(lat, lng)]).then(([{ Map3DElement, Marker3DElement }, ground]) => {
       if (cancelled || !el) return;
-      const map = new Map3DElement({ ...frameCamera(lat, lng, el.clientHeight), mode: "HYBRID" }) as Map3D;
+      altitude.current = ground;
+      const map = new Map3DElement({ ...frameCamera(lat, lng, el.clientHeight, ground), mode: "HYBRID" }) as Map3D;
       map.style.cssText = "display:block;width:100%;height:100%;touch-action:none";
       // GREEDY: one finger moves the camera; the AUTO default turns cooperative inside a
       // scrollable page and asks for two fingers. Set as a property so older builds ignore it.
       map.gestureHandling = "GREEDY";
-      map.append(new Marker3DElement({ position: { lat, lng }, label }));
+      // The pin sits on the terrain whatever its height above sea level.
+      map.append(new Marker3DElement({ position: { lat, lng }, altitudeMode: "CLAMP_TO_GROUND", label }));
       el.replaceChildren(map);
       mapRef.current = map;
       setState("ready");
