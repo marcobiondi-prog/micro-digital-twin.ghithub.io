@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SensorAdvisor } from "@/views/SensorAdvisor";
+import { CopernicusPanel } from "@/views/CopernicusPanel";
 import { RealClimatePanel } from "@/views/RealClimatePanel";
 import { LabMedia } from "@/views/LabMedia";
 import { SimulationGrid, ModeSelector, splitLocation, ImportWeatherButton } from "@/views/SimulationGrid";
@@ -373,6 +374,7 @@ function UrbanFlow({ onModeChange, pinnedMode }: { onModeChange: (mode: "urban" 
       </div>
 
       <RealClimatePanel kind="urban" />
+      <CopernicusPanel kind="urban" />
       <SensorAdvisor kind="urban" />
       <LabMedia kind="urban" context={`Scenario: ${comparison.find((l) => l.id === activeLevel)?.s ?? "attuale"}`} />
       <SimulationGrid onReset={restoreScenario} mode="urban" activeLevel={activeLevel} activeMode="urban" onModeChange={onModeChange} trees={trees} permeable={permeable} shade={shade} onTreesChange={setTrees} onPermeableChange={setPermeable} onShadeChange={setShade} />
@@ -445,6 +447,7 @@ function VineyardFlow({ onModeChange, pinnedMode }: { onModeChange: (mode: "urba
       </div>
 
       <RealClimatePanel kind="vineyard" />
+      <CopernicusPanel kind="vineyard" />
       <SensorAdvisor kind="vineyard" />
       <LabMedia kind="vineyard" context={`${vineyard.allZones ? "Tutte le zone" : `Zona ${vineyard.selected + 1}`} · ${vineyard.phase}`} />
       <SimulationGrid onZonesEdit={onZonesEdit} onReset={restoreScenario} mode="vineyard" activeLevel={activeLevel} activeMode="vineyard" onModeChange={onModeChange} />

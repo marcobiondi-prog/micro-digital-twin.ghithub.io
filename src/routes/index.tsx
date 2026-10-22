@@ -33,6 +33,7 @@ const plan = [
   ["Simulazione urbana e vitivinicola", true, true],
   ["Dati climatici reali della località", true, true],
   ["Vista 3D fotorealistica della località", false, true],
+  ["Dati satellitari Copernicus (vegetazione e temperatura superficiale)", false, true],
   ["Importa il meteo reale come scenario di partenza", false, true],
   ["Esportazione PDF, copia e stampa", true, true],
   ["Foto e video sul dispositivo", true, true],
