@@ -202,7 +202,7 @@ function LocationMapPreview({ location }: { location: SearchedLocation }) {
     return <Button key={v} type="button" size="sm" variant={view === v && !locked ? "default" : "ghost"} aria-pressed={view === v && !locked}
       aria-label={locked ? "3D, riservata agli utenti Premium: accedi per usarla" : undefined}
       onClick={() => { if (locked) setLockedHint(true); else { setLockedHint(false); choose(v); } }}
-      className="h-9 min-w-12 gap-1 rounded-full px-4 text-sm font-semibold">{locked && <Lock className="size-3.5" aria-hidden="true" />}{v === "2d" ? "2D" : "3D"}</Button>;
+      className="h-8 min-w-11 gap-1 rounded-full px-3.5 text-xs font-semibold">{locked && <Lock className="size-3" aria-hidden="true" />}{v === "2d" ? "2D" : "3D"}</Button>;
   })}</div>;
   const hint = lockedHint && !premium && <p role="status" className="border-t border-border/60 bg-background/95 px-2 py-1.5 text-xs text-muted-foreground">La vista 3D è riservata agli utenti Premium: accedi o registrati dal menu account.</p>;
   const footer = <span className="flex items-center justify-between gap-2 border-t border-border/60 bg-background/95 px-2 py-1.5 text-xs font-medium text-foreground">{toggle || <span />}<a href={mapsUrl} target="_blank" rel="noreferrer" aria-label={`Apri ${location.label} in Google Maps`} className="inline-flex items-center gap-1">Apri in Google Maps<MapPin className="size-3 shrink-0 text-primary" aria-hidden="true" /></a></span>;
