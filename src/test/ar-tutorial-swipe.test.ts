@@ -7,8 +7,10 @@ describe("AI tutorial swipes", () => {
     expect(tutorialSwipeStep(2, 4, 100, 0, 0)).toBe(1);
   });
   it("stays within the four steps", () => {
-    expect(tutorialSwipeStep(0, 4, 100, 0, 0)).toBe(0);
-    expect(tutorialSwipeStep(3, 4, -100, 0, 0)).toBe(3);
+    // Wraps around: past the last slide back to the first, before the first to the last.
+    expect(tutorialSwipeStep(0, 4, 100, 0, 0)).toBe(3);
+    expect(tutorialSwipeStep(3, 4, -100, 0, 0)).toBe(0);
+    expect(tutorialSwipeStep(0, 1, -100, 0, 0)).toBe(0);
   });
   it("ignores taps and vertical scrolling", () => {
     expect(tutorialSwipeStep(1, 4, -15, 0, 0)).toBe(1);

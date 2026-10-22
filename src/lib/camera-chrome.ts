@@ -33,7 +33,7 @@ function holdPhonePortrait() {
 let ownsFullscreen = false;
 export function cameraOwnsFullscreen() { return ownsFullscreen; }
 
-/** Resolves true when the camera went fullscreen (the caller then shows its own short hint). */
+/** Resolves true when the camera went fullscreen (Chrome shows its own notice). */
 export function enterCameraChrome(): Promise<boolean> {
   if (!cameraMeta) {
     cameraMeta = document.createElement("meta");
