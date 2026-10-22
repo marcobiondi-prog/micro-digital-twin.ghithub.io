@@ -1863,3 +1863,13 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 .ar-focus-wrap { position: relative; display: flex; flex: none; }
 .ar-scan-counter { position: absolute; z-index: 1; top: -.375rem; left: -.25rem; min-width: 1.25rem; height: 1.25rem; padding-inline: .3rem; display: grid; place-items: center; border-radius: 999px; border: 1.5px solid var(--camera-glass); background: var(--radar-cool); color: oklch(0.16 0.008 255); font-size: .6875rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; box-shadow: 0 1px 4px oklch(0 0 0 / 40%); }
 .ar-real-photo { display: block; width: 100%; max-height: 10rem; margin: 0 auto .5rem; border-radius: 8px; object-fit: cover; }
+
+/* In-camera confirm (turns with the camera surface in landscape, unlike window.confirm). */
+.ar-confirm-veil { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; background: oklch(0 0 0 / 45%); }
+.ar-confirm { width: min(20rem, 100%); padding: 1.125rem 1.125rem .875rem; border-radius: 1.25rem; color: var(--camera-ink); background: var(--camera-glass); border: 1px solid var(--camera-border); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 20px 50px -20px oklch(0 0 0 / 70%); animation: ar-tutorial-in 200ms ease-out; }
+.ar-confirm-title { display: flex; align-items: center; gap: .5rem; font-size: .95rem; font-weight: 700; }
+.ar-confirm-text { margin-top: .5rem; font-size: .8125rem; line-height: 1.45; opacity: .85; }
+.ar-confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+.ar-pill-hud .ar-confirm .camera-tool.ar-confirm-delete, .ar-confirm .camera-tool.ar-confirm-delete { background: color-mix(in oklab, var(--destructive) 85%, transparent); color: oklch(0.98 0 0); border-color: transparent; }
+@media (prefers-reduced-motion: reduce) { .ar-confirm { animation: none; } }
+
