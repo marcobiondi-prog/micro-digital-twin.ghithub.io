@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { clampZoom, createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomLabel, zoomStep } from "@/lib/camera-zoom";
+import { ZOOM_HAPTICS, zoomHaptic, clampZoom, createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomLabel, zoomStep } from "@/lib/camera-zoom";
 
 describe("camera zoom", () => {
   it("clamps between 1× and 5×", () => {
@@ -40,5 +40,18 @@ describe("camera zoom", () => {
     release(); await Promise.resolve(); await Promise.resolve();
     expect(applyConstraints).toHaveBeenCalledTimes(2);
     expect(applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 4 }] });
+  });
+});
+
+describe("zoom haptics", () => {
+  it("bumps at the limits, detents on lens stops, ticks on half steps", () => {
+    expect(zoomHaptic(1.2, 1)).toEqual(ZOOM_HAPTICS.limit);
+    expect(zoomHaptic(4.6, 5)).toEqual(ZOOM_HAPTICS.limit);
+    expect(zoomHaptic(1.8, 2.1)).toEqual(ZOOM_HAPTICS.stop);
+    expect(zoomHaptic(1, 2)).toEqual(ZOOM_HAPTICS.stop);
+    expect(zoomHaptic(2.3, 2.6)).toEqual(ZOOM_HAPTICS.tick);
+    expect(zoomHaptic(2.1, 2.3)).toBeNull();
+    expect(zoomHaptic(2, 2.02)).toBeNull();
+    expect(zoomHaptic(1, 1)).toBeNull();
   });
 });

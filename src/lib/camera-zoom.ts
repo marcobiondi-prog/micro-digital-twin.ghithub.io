@@ -60,3 +60,20 @@ export function createTrackZoomer(track: MediaStreamTrack | undefined) {
   };
   return (value: number) => { if (busy) pending = value; else void run(value); };
 }
+
+/** Haptic patterns (ms), like a lens dial: light tick each 0.5×, firm detent on a lens stop, double bump at the limits. */
+export const ZOOM_HAPTICS = { tick: [10], stop: [28, 6, 18], limit: [40, 30, 40] } as const;
+
+/**
+ * Feedback for a zoom change from `prev` to `next`: the limit bump when reaching 1× or 5×, a detent when
+ * landing on or crossing a lens stop, a light tick when crossing a half step, nothing otherwise.
+ */
+export function zoomHaptic(prev: number, next: number): readonly number[] | null {
+  if (Math.abs(next - prev) < 0.05) return null;
+  if ((next <= ZOOM_MIN && prev > ZOOM_MIN) || (next >= ZOOM_MAX && prev < ZOOM_MAX)) return ZOOM_HAPTICS.limit;
+  const lo = Math.min(prev, next), hi = Math.max(prev, next);
+  // A stop counts when the move reaches it from either side, not when it merely starts there.
+  if (ZOOM_LENSES.some((s) => s !== prev && s > lo - 0.05 && s < hi + 0.05)) return ZOOM_HAPTICS.stop;
+  if (Math.floor(prev * 2) !== Math.floor(next * 2)) return ZOOM_HAPTICS.tick;
+  return null;
+}
