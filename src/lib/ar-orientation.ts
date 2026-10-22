@@ -40,13 +40,17 @@ export function setArOrientationActive(active: boolean) {
 }
 
 /** Project gravity onto screen-down without Euler swaps or full spins. */
-export function cameraViewport(width: number, height: number, angle: number, beta: number | null, gamma: number | null, previousRotation = 0) {
+export function cameraViewport(width: number, height: number, angle: number, beta: number | null, gamma: number | null, previousRotation = 0, type?: string) {
   // Native resize wins. Only rotate the inner camera surface when a portrait
   // WebView refuses free orientation without browser fullscreen.
   let rotation = 0;
   if (width < height) {
     const normalized = ((angle % 360) + 360) % 360;
-    if (normalized === 90 || normalized === 270) rotation = normalized === 90 ? 90 : -90;
+    // Landscape-natural tablets (Surface, many Windows/Android tablets) report 90/270 while
+    // genuinely portrait: the system already rotated the screen and its gesture/task bar,
+    // so the controls stay with it instead of turning sideways.
+    if ((normalized === 90 || normalized === 270) && type?.startsWith("portrait")) rotation = 0;
+    else if (normalized === 90 || normalized === 270) rotation = normalized === 90 ? 90 : -90;
     else if (normalized === 0 && beta != null && gamma != null) {
       // Screen-plane gravity separates an actual quarter turn from camera pitch.
       // When nearly flat or between cardinal directions, keep the last orientation.

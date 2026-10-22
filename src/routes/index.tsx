@@ -32,6 +32,7 @@ const plan = [
   ["Aggiornamento automatico dei casi con fonti online", true, true],
   ["Simulazione urbana e vitivinicola", true, true],
   ["Dati climatici reali della località", true, true],
+  ["Vista 3D fotorealistica della località", false, true],
   ["Importa il meteo reale come scenario di partenza", false, true],
   ["Esportazione PDF, copia e stampa", true, true],
   ["Foto e video sul dispositivo", true, true],
