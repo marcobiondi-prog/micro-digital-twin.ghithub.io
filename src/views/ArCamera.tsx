@@ -12,7 +12,7 @@ type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identifi
 type TabResult = {
   found: string | null; soil: Soil; survey: GroundSurvey | null; species: SpeciesInfo | null; count: number;
   taps: { x: number; y: number }[]; cooling: PlacementCooling[]; last: Parameters<ArScene["place"]> | null;
-  plantPhoto: HTMLCanvasElement | null; photoPreview: string | null; recordId: string | null; thermalMin: boolean;
+  plantPhoto: HTMLCanvasElement | null; photoPreview: string | null; realPhoto: string | null; recordId: string | null; thermalMin: boolean;
 };
 import { type GroundSurvey } from "@/models/ar-recognition";
 import { AR_FOCUS, arFocusOption, defaultArFocus, scanMissing, scanPrecheck, type ArFocus } from "@/models/ar-focus";
@@ -35,7 +35,7 @@ import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models
 import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
-import { recordScan, updateScan } from "@/models/ar-scan-log";
+import { clearScans, recordScan, updateScan, useArScans } from "@/models/ar-scan-log";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -151,6 +151,8 @@ export function ArCamera({
   const [target, setTarget] = useState<ArFocus>(() => defaultArFocus(kind));
   useEffect(() => { setTarget(defaultArFocus(kind)); }, [kind]);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // The real photograph of the scanned plant (the frozen frame cropped to its box), shown in Esito.
+  const [realPhoto, setRealPhoto] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<"analysis" | "manage" | null>(null);
   const [species, setSpecies] = useState<SpeciesInfo | null>(null);
   const [count, setCount] = useState(0);
@@ -369,7 +371,7 @@ export function ArCamera({
     last.current = null;
     setFound(null);
     setSoil(null);
-    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null);
     setSpecies(null);
     setPanelOpen(true);
     setToolsOpen(false); setActiveTool(null);
@@ -509,21 +511,21 @@ export function ArCamera({
     last.current = null; scanRecordId.current = null;
     setSpecies(null);
     setSoil(null);
-    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null);
     setFound(null);
   };
   // Switching section keeps each section's own scan: the current one is set aside and the other's comes back
   // (empty the first time). A running scan stops; completed scans are also in the report log.
   const snapshotResults = (): TabResult => ({
     found, soil, survey, species, count: countRef.current, taps: taps.current, cooling: plantedCooling.current,
-    last: last.current, plantPhoto: plantPhoto.current, photoPreview, recordId: scanRecordId.current, thermalMin,
+    last: last.current, plantPhoto: plantPhoto.current, photoPreview, realPhoto, recordId: scanRecordId.current, thermalMin,
   });
   const restoreResults = (r: TabResult) => {
     countRef.current = r.count; setCount(r.count);
     taps.current = r.taps; plantedCooling.current = r.cooling;
     last.current = r.last; scanRecordId.current = r.recordId;
     setSpecies(r.species); setSoil(r.soil); setSurvey(r.survey);
-    plantPhoto.current = r.plantPhoto; setPhotoPreview(r.photoPreview);
+    plantPhoto.current = r.plantPhoto; setPhotoPreview(r.photoPreview); setRealPhoto(r.realPhoto);
     setFound(r.found); setThermalMin(r.thermalMin);
   };
   const selectTarget = (next: ArFocus) => {
@@ -611,6 +613,7 @@ export function ArCamera({
         logScan("Terreno analizzato · nessuna specie identificata", null, r.soil ?? null);
         return;
       }
+      setRealPhoto(cropRealPhoto(small, d.box));
       const cutout = d.outline ? await extractPlantPhoto(image, d.outline) : null;
       if (version !== scanVersion.current) return;
       plantPhoto.current = cutout;
@@ -671,7 +674,15 @@ export function ArCamera({
   const addGreen = () => changeGreen(countRef.current + 1);
   const removeGreen = () => changeGreen(countRef.current - 1);
   const removeLast = removeGreen;
-  const removeAll = () => changeGreen(0);
+  // "Elimina tutti" also empties this flow's scan records (report log and every section's result), after a confirm.
+  const scanRecords = useArScans(kind);
+  const removeAll = () => {
+    const n = scanRecords.length;
+    if (n && !window.confirm(`Eliminare gli esemplari e ${n === 1 ? "la scansione registrata" : `tutte le ${n} scansioni registrate`} nel report ${kind === "urban" ? "urbano" : "vitivinicolo"}?`)) return;
+    clearScans(kind);
+    tabMemory.current.clear();
+    resetResults();
+  };
   const thermalEstimate = scannedSpecimenThermal(count, species?.cooling ?? null);
   const coolingNow = thermalEstimate.deltaT;
   const shadeNow = thermalEstimate.shadeM2;
@@ -1049,9 +1060,13 @@ export function ArCamera({
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-background/60 to-transparent" />
             <div data-camera-hud className="ar-camera-topbar">
               <div className="ar-camera-actions flex shrink-0 gap-1" data-camera-controls>
+                <div className="ar-focus-wrap">
+                {/* Scans recorded for this flow's report: a badge on the first section pill, taking no row width. */}
+                <span className="ar-scan-counter" role="status" aria-label={`${scanRecords.length} ${scanRecords.length === 1 ? "scansione registrata" : "scansioni registrate"} nel report`} title="Scansioni registrate nel report">{scanRecords.length}</span>
                 <div className="ar-focus-options" role="radiogroup" aria-label={kind === "urban" ? "Obiettivo camera urbana" : "Obiettivo camera vitivinicola"}>
                   {/* Switching section stops any running scan and clears the previous result. */}
                   {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} className="camera-tool ar-focus-pill" onClick={() => selectTarget(o.id)}>{FOCUS_LABELS[o.id]}</Button>)}
+                </div>
                 </div>
                 {(found || species) && !scanning && <Button variant="ghost" size="sm" aria-label="Mostra esito analisi" title="Mostra esito analisi" className="camera-tool ar-esito-chip" onClick={() => { setToolsOpen(true); setActiveTool("analysis"); setPanelOpen(true); }}><Activity className="size-4 shrink-0" />Esito</Button>}
                 <Button variant="ghost" size="icon" className="camera-tool size-11" aria-label="Guida inquadratura" title="Guida inquadratura" aria-pressed={guideOpen} onClick={() => setGuideOpen(v => !v)}><Info className="size-4" /></Button>
@@ -1130,7 +1145,7 @@ export function ArCamera({
                     className="max-h-[32dvh] overflow-y-auto rounded-lg bg-background/95 px-3 py-3 pr-9 text-xs leading-relaxed backdrop-blur-md"
                     aria-live="polite"
                   >
-                  {photoPreview && <img src={photoPreview} alt="Pianta reale scansionata" className="mx-auto mb-2 h-24 max-w-full object-contain" />}
+                  {realPhoto && <img src={realPhoto} alt={species ? `Foto reale: ${species.commonName}` : "Foto reale della pianta scansionata"} className="ar-real-photo" />}
                   {species ? (
                     <p>
                       <span className="text-sm font-semibold">{species.commonName}</span>{" "}
@@ -1158,7 +1173,7 @@ export function ArCamera({
                     <div><dt className="font-semibold">Temperatura del terreno</dt><dd className="text-muted-foreground">Non misurata · serve una sonda termica</dd></div>
                   </dl>}
                   {soil?.note && <p className="text-muted-foreground">{soil.note}</p>}
-                  {photoPreview && <p className="mt-1 text-muted-foreground">Ritaglio fotografico 2D · dimensioni indicative</p>}
+                  {realPhoto && <p className="mt-1 text-muted-foreground">Foto reale dalla scansione · inquadratura della pianta</p>}
                   <p className="mt-1 text-muted-foreground">Identificazione e suolo: stime visive, non analisi strumentali.</p>
                   {found && species && <p role="status">{found}</p>}
                   {species && (
@@ -1183,9 +1198,9 @@ export function ArCamera({
                   </div>
                 </div>
               )}
-              {activeTool === "manage" && count > 0 && <div className="flex flex-wrap items-center justify-center gap-2" data-camera-controls>
-                <Button variant="ghost" size="sm" className="camera-tool" onClick={removeLast} title="Elimina ultimo elemento"><Undo2 className="size-4" />Annulla</Button>
-                {count > 1 && <Button variant="ghost" size="sm" className="camera-tool text-destructive" onClick={removeAll}><Trash2 className="size-4" />Elimina tutti</Button>}
+              {activeTool === "manage" && (count > 0 || scanRecords.length > 0) && <div className="flex flex-wrap items-center justify-center gap-2" data-camera-controls>
+                {count > 0 && <Button variant="ghost" size="sm" className="camera-tool" onClick={removeLast} title="Elimina ultimo elemento"><Undo2 className="size-4" />Annulla</Button>}
+                {(count > 1 || scanRecords.length > 0) && <Button variant="ghost" size="sm" className="camera-tool text-destructive" onClick={removeAll} title="Elimina esemplari e tutte le scansioni registrate"><Trash2 className="size-4" />Elimina tutti</Button>}
               </div>}
               </div>}
               </div>
@@ -1292,4 +1307,20 @@ function thermal(g: CanvasRenderingContext2D, w: number, h: number, taps: { x: n
   g.globalAlpha = 0.85;
   g.drawImage(tmp, 0, 0, w, h);
   g.restore();
+}
+
+/** Real photo of the scanned plant: the recognition frame cropped to the detection box with a small margin. */
+function cropRealPhoto(frame: HTMLCanvasElement, box: { x: number; y: number; w: number; h: number }): string | null {
+  const m = 0.06;
+  const x = Math.max(0, box.x - m), y = Math.max(0, box.y - m);
+  const w = Math.min(1 - x, box.w + 2 * m), h = Math.min(1 - y, box.h + 2 * m);
+  const sw = w * frame.width, sh = h * frame.height;
+  if (sw < 8 || sh < 8) return null;
+  const scale = Math.min(1, 640 / Math.max(sw, sh));
+  const out = document.createElement("canvas");
+  out.width = Math.round(sw * scale); out.height = Math.round(sh * scale);
+  const g = out.getContext("2d");
+  if (!g) return null;
+  g.drawImage(frame, x * frame.width, y * frame.height, sw, sh, 0, 0, out.width, out.height);
+  return out.toDataURL("image/jpeg", 0.85);
 }
