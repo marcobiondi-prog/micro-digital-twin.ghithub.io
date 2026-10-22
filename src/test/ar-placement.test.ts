@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactPlantHeight, nextPlantHeight, placementThermal, isPlacementOutsideHud, scannedSpecimenThermal, scannedSpecimenCount } from "@/models/ar-placement";
+import { compactPlantHeight, nextPlantHeight, placementThermal, isPlacementOutsideHud, scannedSpecimenThermal, scannedSpecimenCount, coolingReadout } from "@/models/ar-placement";
 
 describe("Photographic AR placement", () => {
   it("changes temperature reduction and shade with scanned specimen count, including zero", () => {
@@ -46,5 +46,11 @@ describe("Photographic AR placement", () => {
     expect(nextPlantHeight(1.4, 2)).toBe(1.5);
     expect(nextPlantHeight(0.5, 0)).toBe(0.5);
     expect(nextPlantHeight(0.5, Number.NaN)).toBe(0.5);
+  });
+});
+describe("coolingReadout", () => {
+  it("shows before → after when the air temperature is known, the cooling alone otherwise", () => {
+    expect(coolingReadout(31.44, 1.62)).toEqual({ before: 31.4, after: 29.8, delta: 1.6 });
+    expect(coolingReadout(null, 0.84)).toEqual({ before: null, after: null, delta: 0.8 });
   });
 });
