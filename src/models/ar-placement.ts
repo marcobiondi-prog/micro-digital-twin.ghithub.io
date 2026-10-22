@@ -21,7 +21,7 @@ export function placementThermal(items: PlacementCooling[]) {
   return {
     count: items.length,
     unknown: items.length - known.length,
-    deltaT: Math.round(Math.min(3, known.reduce((sum, item) => sum + Math.max(0, item.deltaT), 0)) * 10) / 10,
+    deltaT: Math.round(Math.min(3, known.reduce((sum, item) => sum + Math.max(0, item.deltaT), 0)) * 1000) / 1000,
     shadeM2: Math.round(known.reduce((sum, item) => sum + Math.max(0, item.shadeM2), 0)),
   };
 }
@@ -34,8 +34,25 @@ export function scannedSpecimenThermal(count: number, cooling: PlacementCooling)
   return placementThermal(Array.from({ length: scannedSpecimenCount(count) }, () => cooling));
 }
 
+/** Decimals for a cooling value: tenths, or hundredths for small plants so each specimen still shows a change. */
+export const coolingDigits = (deltaT: number) => (Math.abs(deltaT) > 0 && Math.abs(deltaT) < 0.095 ? 2 : 1);
+
+/** Unsigned Italian cooling amount: "0,4", "0,03", or "< 0,01" for a non-zero effect too small to print. */
+export function coolingAmount(deltaT: number, digits = coolingDigits(deltaT)) {
+  const v = Math.abs(deltaT);
+  if (v > 0 && v < 0.005) return "< 0,01";
+  return v.toLocaleString("it-IT", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+/** "≈ −0,4 °C", "≈ −0,03 °C", "< 0,01 °C". */
+export function coolingLabel(deltaT: number) {
+  const amount = coolingAmount(deltaT);
+  return amount.startsWith("<") ? `${amount} °C` : `≈ −${amount} °C`;
+}
+
 /** "Before → after" for the balance: base air temperature (when known) minus the estimated cooling. */
 export function coolingReadout(baseTemp: number | null, deltaT: number) {
-  const round = (v: number) => Math.round(v * 10) / 10;
-  return { before: baseTemp === null ? null : round(baseTemp), after: baseTemp === null ? null : round(baseTemp - deltaT), delta: round(deltaT) };
+  const digits = coolingDigits(deltaT);
+  const round = (v: number) => Math.round(v * 10 ** digits) / 10 ** digits;
+  return { before: baseTemp === null ? null : round(baseTemp), after: baseTemp === null ? null : round(baseTemp - deltaT), delta: round(deltaT), digits };
 }

@@ -1826,6 +1826,12 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
   .ar-camera-surface[data-landscape=true] .ar-specimen-dock { align-self: flex-end; width: min(52%, 22rem); }
   /* Esito / Analisi / AR tools take the same right-hand column as the balance, clear of the summary. */
   .ar-camera-surface[data-landscape=true] .ar-tools-panel { width: min(100%, 22rem); margin-inline: auto 0; }
+  /* The bottom HUD now reaches up the right column, so its empty left part (over the summary) must let taps
+     through: only its controls catch them, and the minimized summary chip reopens. */
+  .ar-camera-surface[data-landscape=true] .camera-bottom,
+  .ar-camera-surface[data-landscape=true] #ar-camera-tools { pointer-events: none; }
+  .ar-camera-surface[data-landscape=true] .camera-bottom > :not(#ar-camera-tools),
+  .ar-camera-surface[data-landscape=true] .ar-tools-panel { pointer-events: auto; }
   .ar-camera-surface[data-landscape=true] .ar-cooling-readout { margin-top: 1.4rem; }
   .ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
 }

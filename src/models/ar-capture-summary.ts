@@ -10,7 +10,7 @@ export function captureSummaryLines(summary: CaptureSummary | null, context: str
   const area = satellite ? [satellite] : [];
   if (!summary) return [...lines, "Pianta non identificata · nessuna stima botanica", ...area];
   return [...lines, `${summary.commonName} · ${summary.scientificName} · ${summary.level}`,
-    `${summary.count} esemplari · raffrescamento ${summary.cooling === null ? "n.d." : `≈ −${summary.cooling.toFixed(1)} °C`} · ombra ${summary.shade === null ? "n.d." : `≈ ${Math.round(summary.shade)} m²`}`,
+    `${summary.count} esemplari · raffrescamento ${summary.cooling === null ? "n.d." : `≈ −${summary.cooling.toFixed(summary.cooling > 0 && summary.cooling < 0.095 ? 2 : 1)} °C`} · ombra ${summary.shade === null ? "n.d." : `≈ ${Math.round(summary.shade)} m²`}`,
     ...area,
     "Stime indicative · temperatura non misurata"];
 }
