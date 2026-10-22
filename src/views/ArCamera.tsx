@@ -1068,15 +1068,20 @@ export function ArCamera({
               </div>}
               </div>
                {!toolsOpen && specimenDock}
-               {!toolsOpen && <div className="ar-zoom-lenses" role="group" aria-label="Zoom della fotocamera" data-camera-controls>
-                {ZOOM_LENSES.map((lens, i) => {
-                  // Like a lens dial: the chip in use shows the live value (pinch included), the others their preset.
-                  const active = zoom >= lens - 0.05 && (i === ZOOM_LENSES.length - 1 || zoom < ZOOM_LENSES[i + 1]! - 0.05);
-                  return <button key={lens} type="button" className="ar-zoom-lens" data-active={active || undefined}
-                    aria-pressed={active} aria-label={`Zoom ${zoomLabel(lens)}`} disabled={!ready || scanning}
-                    onClick={() => setZoom(lens)}>{active ? zoomLabel(zoom) : lens}</button>;
-                })}
-              </div>}
+               {!toolsOpen && (() => {
+                // Three chips: the neighbouring lenses on the sides, the live value in the centre (tap = back to 1×).
+                const lower = [...ZOOM_LENSES].reverse().find((l) => l < zoom - 0.05);
+                const higher = ZOOM_LENSES.find((l) => l > zoom + 0.05);
+                const side = (lens: number | undefined, label: string) => <button type="button" className="ar-zoom-lens"
+                  aria-label={lens === undefined ? label : `${label}: ${zoomLabel(lens)}`} disabled={lens === undefined || !ready || scanning}
+                  onClick={() => lens !== undefined && setZoom(lens)}>{lens ?? "·"}</button>;
+                return <div className="ar-zoom-lenses" role="group" aria-label="Zoom della fotocamera" data-camera-controls>
+                  {side(lower, "Riduci zoom")}
+                  <button type="button" className="ar-zoom-lens" data-active aria-label={`Zoom ${zoomLabel(zoom)}: tocca per tornare a 1×`}
+                    disabled={!ready || scanning} onClick={() => setZoom(1)}>{zoomLabel(zoom)}</button>
+                  {side(higher, "Aumenta zoom")}
+                </div>;
+              })()}
                <CameraCaptureControl mode={mode ?? "photo"} recording={recording} ar disabled={!ready || scanning || xrActive} onCapture={mode === "photo" ? shoot : record} left={<div className="camera-labelled-tool ar-scan-tools">
                 <Button variant="ghost" size="icon"
                   type="button"

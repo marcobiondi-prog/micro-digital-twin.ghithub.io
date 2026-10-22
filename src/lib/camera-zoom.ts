@@ -3,7 +3,7 @@
 
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 5;
-/** Lens-style chips shown above the shutter (Xperia-like); pinch moves freely between them. */
+/** Lens stops: the side chips jump to the neighbouring ones; pinch moves freely between them. */
 export const ZOOM_LENSES = [1, 2, 3, 5] as const;
 /** Fine presets for stepping. */
 export const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 5] as const;
