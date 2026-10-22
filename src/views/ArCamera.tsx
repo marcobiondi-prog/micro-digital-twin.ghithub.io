@@ -829,7 +829,8 @@ export function ArCamera({
   const pageCount = scanRecords.length + (hasLive && liveRecord < 0 ? 1 : 0);
   const viewPage = Math.min(pageCount - 1, browse ?? (livePage >= 0 ? livePage : scanRecords.length - 1));
   const viewedRecord = viewPage !== livePage ? scanRecords[viewPage] ?? null : null;
-  const goToPage = (page: number) => setBrowse(Math.max(0, Math.min(pageCount - 1, page)));
+  // Wraps like the tutorial: after the last scan back to the first, before the first to the last.
+  const goToPage = (page: number) => setBrowse(pageCount ? (page + pageCount) % pageCount : null);
   const summarySwipeProps = {
     onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
       if (!event.isPrimary || event.pointerType === "mouse" || pageCount < 2 || (event.target instanceof Element && event.target.closest("button"))) return;
@@ -846,9 +847,9 @@ export function ArCamera({
   };
   const summaryPager = pageCount > 1 && (
     <div className="ar-summary-pager">
-      <button type="button" aria-label="Scansione precedente" disabled={viewPage <= 0} onClick={() => goToPage(viewPage - 1)}><ChevronLeft className="size-3.5" /></button>
+      <button type="button" aria-label="Scansione precedente" onClick={() => goToPage(viewPage - 1)}><ChevronLeft className="size-3.5" /></button>
       <span>Scansione {viewPage + 1} di {pageCount} · scorri per le altre</span>
-      <button type="button" aria-label="Scansione successiva" disabled={viewPage >= pageCount - 1} onClick={() => goToPage(viewPage + 1)}><ChevronRight className="size-3.5" /></button>
+      <button type="button" aria-label="Scansione successiva" onClick={() => goToPage(viewPage + 1)}><ChevronRight className="size-3.5" /></button>
     </div>
   );
   const minimizeSummary = <Button type="button" variant="ghost" size="icon" onClick={() => setThermalMin(true)}
