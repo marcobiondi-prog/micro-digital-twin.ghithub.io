@@ -23,12 +23,19 @@ let state = serverState;
 let loaded = false;
 const listeners = new Set<() => void>();
 
+/** The pre-fix default (Palazzo San Giorgio, 41.5603, 14.6627) saved on devices is moved to the real piazza; any place the user chose is kept. */
+export function upgradeUrbanLocation(location: Loc | undefined, fallback: Loc): Loc {
+  if (!location) return fallback;
+  const oldDefault = Math.abs(location.lat - 41.5603) < 1e-4 && Math.abs(location.lng - 14.6627) < 1e-4;
+  return oldDefault ? fallback : location;
+}
+
 function load() {
   if (loaded || typeof window === "undefined") return;
   loaded = true;
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (raw) { const d = defaults(), p = JSON.parse(raw) as Partial<LabState>; state = { ...state, urban: { ...d.urban, ...p.urban }, vineyard: { ...d.vineyard, ...p.vineyard }, syncedAt: p.syncedAt ?? null, syncedTargets: p.syncedTargets ?? null }; }
+    if (raw) { const d = defaults(), p = JSON.parse(raw) as Partial<LabState>; state = { ...state, urban: { ...d.urban, ...p.urban, location: upgradeUrbanLocation(p.urban?.location, d.urban.location) }, vineyard: { ...d.vineyard, ...p.vineyard }, syncedAt: p.syncedAt ?? null, syncedTargets: p.syncedTargets ?? null }; }
   } catch { /* ignore */ }
   window.addEventListener("storage", (e) => { if (e.key === KEY && e.newValue) { try { state = JSON.parse(e.newValue); listeners.forEach((l) => l()); } catch { /* ignore */ } } });
 }

@@ -54,8 +54,8 @@ export function LocationMap3D({ lat, lng, label, apiKey }: { lat: number; lng: n
       // GREEDY: one finger moves the camera; the AUTO default turns cooperative inside a
       // scrollable page and asks for two fingers. Set as a property so older builds ignore it.
       map.gestureHandling = "GREEDY";
-      // The pin sits on the terrain whatever its height above sea level.
-      map.append(new Marker3DElement({ position: { lat, lng }, altitudeMode: "CLAMP_TO_GROUND", label }));
+      // On top of the 3D mesh (roofs, trees) and drawn even when occluded: a ground pin in a street disappears behind buildings.
+      map.append(new Marker3DElement({ position: { lat, lng, altitude: 0 }, altitudeMode: "RELATIVE_TO_MESH", drawsWhenOccluded: true, label }));
       el.replaceChildren(map);
       mapRef.current = map;
       setState("ready");
