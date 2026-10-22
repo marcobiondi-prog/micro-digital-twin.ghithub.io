@@ -1819,3 +1819,29 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 @keyframes ar-cooling-step { 0% { opacity: 0; transform: translateY(4px); } 15% { opacity: 1; transform: translateY(0); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .ar-cooling-step { animation: none; } }
 .ar-cooling-satellite { margin-top: .2rem; font-size: .64rem; opacity: .7; color: var(--camera-ink); font-variant-numeric: tabular-nums; }
+/* Smartphone landscape only (short side < 600 px; tablets keep their layout): the thermal summary owns the
+   left ~40%, so the specimen balance sits on the right like the tools panel, and the expanded summary stops
+   above the capture row (Scansiona / shutter) and scrolls the rest. */
+@media (max-width: 599px), (max-height: 599px) {
+  .ar-camera-surface[data-landscape=true] .ar-specimen-dock { align-self: flex-end; width: min(52%, 22rem); }
+  /* Esito / Analisi / AR tools take the same right-hand column as the balance, clear of the summary. */
+  .ar-camera-surface[data-landscape=true] .ar-tools-panel { width: min(100%, 22rem); margin-inline: auto 0; }
+  .ar-camera-surface[data-landscape=true] .ar-cooling-readout { margin-top: 1.4rem; }
+  .ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
+}
+
+/* Accordion for the specimen balance: smartphones only; on tablets the toggle is hidden and the balance always open. */
+.ar-dock-toggle { display: none; }
+@media (max-width: 599px), (max-height: 599px) {
+  .ar-dock-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: .5rem; min-height: 2rem; padding: .125rem 0; font-size: .72rem; font-weight: 600; color: var(--camera-ink); text-align: left; font-variant-numeric: tabular-nums; }
+  /* The dock keeps its footprint, so the header never moves: collapsing clips it to the header row and
+     opening reveals the body from top to bottom. The clipped part is transparent and takes no touches. */
+  .ar-specimen-dock { clip-path: inset(0 0 0 0 round 8px); transition: clip-path .28s cubic-bezier(.2, .8, .2, 1); }
+  .ar-specimen-dock[data-collapsed] { clip-path: inset(0 0 calc(100% - 2.75rem) 0 round 8px); }
+  .ar-specimen-dock { position: relative; }
+  .ar-specimen-dock::after { content: ""; position: absolute; inset: calc(2.75rem - 1px) 0 auto; height: 1px; border-radius: 0 0 8px 8px; background: var(--camera-border); opacity: 0; transition: opacity .15s ease; pointer-events: none; }
+  .ar-specimen-dock[data-collapsed]::after { opacity: 1; }
+  .ar-dock-body { transition: opacity .2s ease; }
+  .ar-specimen-dock[data-collapsed] .ar-dock-body { opacity: 0; visibility: hidden; transition: opacity .15s ease, visibility 0s .28s; }
+}
+@media (prefers-reduced-motion: reduce) { .ar-specimen-dock, .ar-dock-body, .ar-specimen-dock[data-collapsed] .ar-dock-body { transition: none; } }
