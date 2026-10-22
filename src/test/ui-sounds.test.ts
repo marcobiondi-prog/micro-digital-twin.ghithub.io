@@ -131,3 +131,29 @@ describe("tablet click voicing", () => {
     expect(filters.map((f) => f.type)).toEqual(["highpass", "highshelf", "lowpass"]);
   });
 });
+
+describe("tap timing", () => {
+  it("plays when the finger lifts on the button, once, and not after a scroll", async () => {
+    vi.resetModules();
+    const starts = vi.fn();
+    const node = () => ({ connect: vi.fn().mockReturnThis(), disconnect: vi.fn() });
+    vi.stubGlobal("AudioContext", vi.fn(function () {
+      return { state: "running", destination: {}, decodeAudioData: async () => ({ duration: 0.03 }), createBufferSource: () => ({ ...node(), start: starts }), createGain: () => ({ ...node(), gain: { value: 1 } }), createBiquadFilter: () => ({ ...node(), frequency: { value: 0 }, gain: { value: 0 } }) };
+    }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1]), { headers: { "content-type": "audio/wav" } })));
+    device();
+    const { installUiClicks, preloadCompareClick } = await import("@/lib/ui-sounds");
+    document.body.innerHTML = '<button id="b"><span id="inner">Ok</span></button>';
+    const stop = installUiClicks();
+    await preloadCompareClick();
+    const el = document.getElementById("inner")!;
+    const ev = (type: string, x: number, y: number) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: "touch", pointerId: 7, clientX: x, clientY: y }));
+    // Tap: sound on lift, none on the click that follows.
+    ev("pointerdown", 10, 10); expect(starts).toHaveBeenCalledTimes(0);
+    ev("pointerup", 12, 11); expect(starts).toHaveBeenCalledTimes(1);
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); expect(starts).toHaveBeenCalledTimes(1);
+    // Scroll: the finger moved, no sound.
+    ev("pointerdown", 10, 10); ev("pointerup", 10, 80); expect(starts).toHaveBeenCalledTimes(1);
+    stop();
+  });
+});
