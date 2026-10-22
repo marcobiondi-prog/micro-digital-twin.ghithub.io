@@ -197,7 +197,7 @@ function LocationMapPreview({ location }: { location: SearchedLocation }) {
     : `https://maps.google.com/maps?q=${encodeURIComponent(coordinates)}&z=16&hl=it&output=embed`;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`;
   // The photorealistic 3D view needs the browser key (Maps JavaScript API + Map Tiles API): without it only 2D is offered.
-  const toggle = key && <div className="flex gap-1 rounded-full bg-muted p-1" role="group" aria-label="Vista della mappa">{(["2d", "3d"] as const).map((v) => {
+  const toggle = key && <div className="flex gap-1 rounded-full border-[1.5px] border-solid border-foreground/25 bg-muted p-1" role="group" aria-label="Vista della mappa">{(["2d", "3d"] as const).map((v) => {
     const locked = v === "3d" && !premium;
     return <Button key={v} type="button" size="sm" variant={view === v && !locked ? "default" : "ghost"} aria-pressed={view === v && !locked}
       aria-label={locked ? "3D, riservata agli utenti Premium: accedi per usarla" : undefined}
