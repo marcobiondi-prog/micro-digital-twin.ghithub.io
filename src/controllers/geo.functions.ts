@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { geocodingDeniedMessage } from "@/models/google-errors";
 import { z } from "zod";
 
 const geocodeInput = z.object({ query: z.string().trim().min(3).max(160) });
@@ -64,7 +65,7 @@ export const searchGoogleLocation = createServerFn({ method: "POST" })
     // The direct Geocoding API reports key problems as 200 + REQUEST_DENIED.
     if (body.status === "REQUEST_DENIED") {
       console.error(`Google Maps geocoding denied: ${body.error_message ?? ""}`);
-      return { error: "Google Maps ha rifiutato la ricerca: verifica la chiave server." };
+      return { error: geocodingDeniedMessage(body.error_message) };
     }
     const first = body.results?.[0];
     const lat = first?.geometry?.location?.lat;
