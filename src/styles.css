@@ -1822,3 +1822,5 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 /* Landscape: the thermal summary owns the left ~40%, so the specimen balance sits on the right, like the tools panel. */
 .ar-camera-surface[data-landscape=true] .ar-specimen-dock { align-self: flex-end; width: min(52%, 22rem); }
 .ar-camera-surface[data-landscape=true] .ar-cooling-readout { margin-top: 1.4rem; }
+/* Landscape: the expanded summary stops above the capture row (Scansiona / shutter) and scrolls the rest. */
+.ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
