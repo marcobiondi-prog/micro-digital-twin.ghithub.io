@@ -152,16 +152,32 @@ function LocationSearch({ initial, onSelect }: { initial: SearchedLocation; onSe
 const MAP_RESIZE_MS = 300;
 const LocationMap3D = lazy(() => import("@/views/LocationMap3D").then((m) => ({ default: m.LocationMap3D })));
 
+/** Premium = signed in (registration required), as for the AI camera. */
+function useSignedIn() {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSignedIn(!!data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSignedIn(!!s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+  return signedIn;
+}
+
 function LocationMapPreview({ location }: { location: SearchedLocation }) {
   // With a browser key (Maps Embed API, referrer-restricted) use the official embed;
   // otherwise Google's keyless classic embed, so the preview is always Google Maps.
   const key = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY;
+  // The photorealistic 3D view is Premium: signed-in users only; guests keep the 2D map.
+  const premium = useSignedIn();
+  const has3d = Boolean(key) && premium;
   const [view, setView] = useState<"2d" | "3d">("2d");
   // 3D grows the panel for a better view; 2D shrinks it back first, then swaps to the embed.
   const [expanded, setExpanded] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const collapseTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(collapseTimer.current), []);
+  // Signing out while in 3D goes back to the 2D map.
+  useEffect(() => { if (!has3d) { setView("2d"); setExpanded(false); } }, [has3d]);
   const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const choose = (next: "2d" | "3d") => {
     window.clearTimeout(collapseTimer.current);
@@ -180,9 +196,9 @@ function LocationMapPreview({ location }: { location: SearchedLocation }) {
     : `https://maps.google.com/maps?q=${encodeURIComponent(coordinates)}&z=16&hl=it&output=embed`;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`;
   // The photorealistic 3D view needs the browser key (Maps JavaScript API + Map Tiles API): without it only 2D is offered.
-  const toggle = key && <div className="flex gap-0.5 rounded-full bg-muted p-0.5" role="group" aria-label="Vista della mappa">{(["2d", "3d"] as const).map((v) => <Button key={v} type="button" size="sm" variant={view === v ? "default" : "ghost"} aria-pressed={view === v} onClick={() => choose(v)} className="h-6 rounded-full px-2.5 text-[10px] font-semibold">{v === "2d" ? "2D" : "3D"}</Button>)}</div>;
+  const toggle = has3d && <div className="flex gap-0.5 rounded-full bg-muted p-0.5" role="group" aria-label="Vista della mappa">{(["2d", "3d"] as const).map((v) => <Button key={v} type="button" size="sm" variant={view === v ? "default" : "ghost"} aria-pressed={view === v} onClick={() => choose(v)} className="h-6 rounded-full px-2.5 text-[10px] font-semibold">{v === "2d" ? "2D" : "3D"}</Button>)}</div>;
   const footer = <span className="flex items-center justify-between gap-2 border-t border-border/60 bg-background/95 px-2 py-1 text-[10px] font-medium text-foreground">{toggle || <span />}<a href={mapsUrl} target="_blank" rel="noreferrer" aria-label={`Apri ${location.label} in Google Maps`} className="inline-flex items-center gap-1">Apri in Google Maps<MapPin className="size-3 shrink-0 text-primary" aria-hidden="true" /></a></span>;
-  if (view === "3d" && key) return <div ref={panel} className="flex min-w-0 flex-col overflow-hidden rounded-md border bg-lab-surface">
+  if (view === "3d" && has3d && key) return <div ref={panel} className="flex min-w-0 flex-col overflow-hidden rounded-md border bg-lab-surface">
     <div className={cn("w-full transition-[height] duration-300 ease-out motion-reduce:transition-none", expanded ? "h-72 sm:h-80 lg:h-96" : "h-36 sm:h-40")}>
       <Suspense fallback={<div className="h-full w-full bg-lab-surface" />}><LocationMap3D lat={location.lat} lng={location.lng} label={splitLocation(location.label).name} apiKey={key} /></Suspense>
     </div>
@@ -221,13 +237,8 @@ export function ModeSelector({ activeMode, onModeChange, pinned = false }: Pick<
 
 /** Signed-in only: imports current Open-Meteo values as the shared baseline of all three scenarios. */
 export function ImportWeatherButton({ onImport }: { onImport?: (() => Promise<void>) | undefined }) {
-  const [signedIn, setSignedIn] = useState(false);
+  const signedIn = useSignedIn();
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSignedIn(!!data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSignedIn(!!s));
-    return () => data.subscription.unsubscribe();
-  }, []);
   if (!onImport || !signedIn) return null;
   return <Button type="button" size="sm" variant="secondary" disabled={busy} className="w-full rounded-full" onClick={async () => { setBusy(true); try { await onImport(); } finally { setBusy(false); } }}>{busy ? <LoaderCircle className="animate-spin" /> : <CloudSun />}{busy ? "Importazione…" : "Importa dal meteo reale"}</Button>;
 }
