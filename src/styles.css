@@ -1872,9 +1872,3 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 .ar-confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
 .ar-pill-hud .ar-confirm .camera-tool.ar-confirm-delete, .ar-confirm .camera-tool.ar-confirm-delete { background: color-mix(in oklab, var(--destructive) 85%, transparent); color: oklch(0.98 0 0); border-color: transparent; }
 @media (prefers-reduced-motion: reduce) { .ar-confirm { animation: none; } }
-
-/* Our fullscreen hint: inside the rotated camera surface, fades out on its own. */
-.ar-fullscreen-hint { position: absolute; z-index: 55; left: 50%; top: calc(var(--ar-header-bottom, 4.5rem) + .5rem); transform: translateX(-50%); width: max-content; max-width: calc(100% - 2rem); padding: .5rem .875rem; border-radius: 1rem; background: var(--camera-glass); border: 1px solid var(--camera-border); color: var(--camera-ink); backdrop-filter: blur(12px); font-size: .75rem; text-align: center; pointer-events: none; animation: ar-fullscreen-hint 3.2s ease forwards; }
-@keyframes ar-fullscreen-hint { 0% { opacity: 0; } 10% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .ar-fullscreen-hint { animation: none; } }
-
