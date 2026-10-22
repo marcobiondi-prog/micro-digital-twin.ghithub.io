@@ -35,7 +35,7 @@ import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models
 import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
-import { recordScan, updateScan } from "@/models/ar-scan-log";
+import { clearScans, recordScan, updateScan, useArScans } from "@/models/ar-scan-log";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -671,7 +671,15 @@ export function ArCamera({
   const addGreen = () => changeGreen(countRef.current + 1);
   const removeGreen = () => changeGreen(countRef.current - 1);
   const removeLast = removeGreen;
-  const removeAll = () => changeGreen(0);
+  // "Elimina tutti" also empties this flow's scan records (report log and every section's result), after a confirm.
+  const scanRecords = useArScans(kind);
+  const removeAll = () => {
+    const n = scanRecords.length;
+    if (n && !window.confirm(`Eliminare gli esemplari e ${n === 1 ? "la scansione registrata" : `tutte le ${n} scansioni registrate`} nel report ${kind === "urban" ? "urbano" : "vitivinicolo"}?`)) return;
+    clearScans(kind);
+    tabMemory.current.clear();
+    resetResults();
+  };
   const thermalEstimate = scannedSpecimenThermal(count, species?.cooling ?? null);
   const coolingNow = thermalEstimate.deltaT;
   const shadeNow = thermalEstimate.shadeM2;
@@ -1183,9 +1191,9 @@ export function ArCamera({
                   </div>
                 </div>
               )}
-              {activeTool === "manage" && count > 0 && <div className="flex flex-wrap items-center justify-center gap-2" data-camera-controls>
-                <Button variant="ghost" size="sm" className="camera-tool" onClick={removeLast} title="Elimina ultimo elemento"><Undo2 className="size-4" />Annulla</Button>
-                {count > 1 && <Button variant="ghost" size="sm" className="camera-tool text-destructive" onClick={removeAll}><Trash2 className="size-4" />Elimina tutti</Button>}
+              {activeTool === "manage" && (count > 0 || scanRecords.length > 0) && <div className="flex flex-wrap items-center justify-center gap-2" data-camera-controls>
+                {count > 0 && <Button variant="ghost" size="sm" className="camera-tool" onClick={removeLast} title="Elimina ultimo elemento"><Undo2 className="size-4" />Annulla</Button>}
+                {(count > 1 || scanRecords.length > 0) && <Button variant="ghost" size="sm" className="camera-tool text-destructive" onClick={removeAll} title="Elimina esemplari e tutte le scansioni registrate"><Trash2 className="size-4" />Elimina tutti</Button>}
               </div>}
               </div>}
               </div>
