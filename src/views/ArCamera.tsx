@@ -23,7 +23,8 @@ import { CameraCenterCapture } from "@/views/CameraCenterCapture";
 import { CameraCaptureControl } from "@/views/CameraCaptureControl";
 import { playAiShutter, playCameraSound, preloadAiShutter, startScanLoop } from "@/lib/camera-sounds";
 import { useLab } from "@/models/lab-store";
-import { createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomLabel, ZOOM_LENSES, ZOOM_MAX, ZOOM_MIN } from "@/lib/camera-zoom";
+import { createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomHaptic, zoomLabel, ZOOM_LENSES, ZOOM_MAX, ZOOM_MIN } from "@/lib/camera-zoom";
+import { hapticTick } from "@/lib/haptics";
 import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models/copernicus";
 import { loadCopernicus } from "@/views/copernicus-client";
 import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
@@ -91,7 +92,11 @@ export function ArCamera({
     const { hardware, digital } = splitZoom(value, zoomRangeRef.current);
     if (hardware !== null) zoomerRef.current?.(hardware);
     digitalZoomRef.current = digital;
+    const prev = zoomRef.current;
     zoomRef.current = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value * 10) / 10));
+    // Lens-dial feel on phones/tablets: ticks, detents on 1·2·3·5, a bump at the limits.
+    const haptic = zoomHaptic(prev, zoomRef.current);
+    if (haptic) hapticTick([...haptic]);
     setZoomState(zoomRef.current);
   };
   const onPinch = (ratio: number, start: boolean) => {
