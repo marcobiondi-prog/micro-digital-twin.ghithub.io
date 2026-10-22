@@ -7,6 +7,7 @@ import { findSubject, SEARCH_BOX, smoothBox, type SubjectBox } from "@/lib/ar-su
 import { extractPlantPhoto } from "@/views/ar-plant-photo";
 
 type D = NonNullable<Detection>;
+const FULLSCREEN_HINT_MS = 3200;
 type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identification: D["identification"] };
 /** One camera section's scan, set aside while another section is open. */
 type TabResult = {
@@ -36,7 +37,7 @@ import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
 import { clearScans, recordScan, updateScan, useArScans } from "@/models/ar-scan-log";
-import { enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
+import { cameraOwnsFullscreen, enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -152,6 +153,7 @@ export function ArCamera({
   const [target, setTarget] = useState<ArFocus>(() => defaultArFocus(kind));
   useEffect(() => { setTarget(defaultArFocus(kind)); }, [kind]);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [fullscreenHint, setFullscreenHint] = useState(false);
   // The real photograph of the scanned plant (the frozen frame cropped to its box), shown in Esito.
   const [realPhoto, setRealPhoto] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<"analysis" | "manage" | null>(null);
@@ -333,8 +335,14 @@ export function ArCamera({
     if (!mode) return;
     setArOrientationActive(true);
     // No white system bars: fullscreen where allowed, else a dark theme-color (lib/camera-chrome).
-    enterCameraChrome();
-    return () => { setArOrientationActive(false); exitCameraChrome(); };
+    // Chrome's own fullscreen notice cannot be hidden; ours is a short hint that fades by itself.
+    let live = true, timer = 0;
+    void enterCameraChrome().then((fullscreen) => {
+      if (!live || !fullscreen) return;
+      setFullscreenHint(true);
+      timer = window.setTimeout(() => setFullscreenHint(false), FULLSCREEN_HINT_MS);
+    });
+    return () => { live = false; window.clearTimeout(timer); setFullscreenHint(false); setArOrientationActive(false); exitCameraChrome(); };
   }, [mode]);
 
   useEffect(() => {
@@ -344,7 +352,8 @@ export function ArCamera({
     let wasFullscreen = Boolean(document.fullscreenElement);
     const onFullscreenChange = () => {
       const fullscreen = Boolean(document.fullscreenElement);
-      if (wasFullscreen && !fullscreen) onClose();
+      // The camera's own fullscreen can drop on rotation: the camera stays open (dark bars).
+      if (wasFullscreen && !fullscreen && !cameraOwnsFullscreen()) onClose();
       wasFullscreen = fullscreen;
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
@@ -995,6 +1004,7 @@ export function ArCamera({
               {scanning && <span className="ar-viewfinder-scan"><span className="ar-viewfinder-sweep" /></span>}
             </div>}
             {guideOpen && <div className="ar-tutorial-veil" data-camera-controls aria-hidden="true" />}
+            {fullscreenHint && <p className="ar-fullscreen-hint" role="status">Schermo intero · Indietro o swipe dal basso verso l’alto per uscire</p>}
             {confirmClear && <div className="ar-confirm-veil" data-camera-controls onClick={() => setConfirmClear(false)}>
               <div className="ar-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ar-confirm-title" aria-describedby="ar-confirm-text"
                 onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") setConfirmClear(false); }}>
