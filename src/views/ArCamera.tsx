@@ -214,7 +214,7 @@ export function ArCamera({
       const rect = surfaceRef.current?.getBoundingClientRect();
       if (!rect?.width || !rect.height) return;
       const angle = screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
-      const next = cameraViewport(rect.width, rect.height, angle, beta, gamma, current.rotation);
+      const next = cameraViewport(rect.width, rect.height, angle, beta, gamma, current.rotation, screen.orientation?.type);
       if (next.width === current.width && next.height === current.height && next.rotation === current.rotation) return;
       const turn = shortestRotationDelta(current.rotation, next.rotation);
       const animate = current.width > 0 && !reducedMotion.matches && (turn !== 0 || next.landscape !== current.landscape);

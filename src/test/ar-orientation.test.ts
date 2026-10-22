@@ -104,6 +104,12 @@ describe("AR ground orientation", () => {
     expect(cameraViewport(411, 775, 90, null, null)).toEqual({ width: 775, height: 411, rotation: 90, landscape: true });
     expect(cameraViewport(411, 775, 270, null, null)).toEqual({ width: 775, height: 411, rotation: -90, landscape: true });
   });
+  it("keeps a landscape-natural tablet held portrait upright, with the system bar", () => {
+    expect(cameraViewport(1333, 1964, 90, 10, 80, 0, "portrait-primary")).toEqual({ width: 1333, height: 1964, rotation: 0, landscape: false });
+    expect(cameraViewport(1333, 1964, 270, 10, -80, 0, "portrait-secondary").rotation).toBe(0);
+    // A portrait-locked phone turned sideways still reports a landscape type.
+    expect(cameraViewport(411, 775, 90, null, null, 0, "landscape-primary").rotation).toBe(90);
+  });
   it("uses physical tilt when the host angle stays portrait", () => {
     expect(cameraViewport(834, 1194, 0, 10, 80).rotation).toBe(-90);
     expect(cameraViewport(834, 1194, 0, 10, -80).rotation).toBe(90);

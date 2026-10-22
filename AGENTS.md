@@ -31,7 +31,7 @@
 - AR uses validated photo planes, no synthetic plants or placement screen; ar-placement bounds size/cooling. ar-frame excludes grids from photos; ar-frame-loop caps 30 fps and pauses hidden pages.
 - AR recognition uses a shared validated model and a server-only streaming parser; durable service pauses prevent repeating denied requests across reloads.
 - Preview swipes exclude controls. Shared CameraCaptureControl owns the capture dock/local timer; camera-scoped tokens keep footage legible. Touch policy gates center capture.
-- AI rotation uses plane-gravity dead bands, shortest-turn snapshots and shared preview/scan counter-rotation; native resize wins, flat/pitched holding stays stable. Reduced motion skips animation; close restores portrait. System bars need host support.
+- AI rotation uses plane-gravity dead bands, shortest-turn snapshots and shared preview/scan counter-rotation; native resize wins (landscape-natural tablets reporting 90/270 with a portrait orientation type stay upright with their system bar), flat/pitched holding stays stable. Reduced motion skips animation; close restores portrait. System bars need host support.
 - AI HUD groups compact selectors with Info/flash/close; separate hints/results prevent overlap. Landscape tools sit beside thermal results. Keep one expanded panel, honest scan phases and camera-local tutorial swipes.
 - AI identification shows leaf evidence/uncertainty; bounded specimen counts drive cooling without stage plants. Photo captions freeze botanical/thermal results for existing media storage and PDF inclusion.
 - Flash shortcut uses capability-checked track torch, never simulated light; recognition uses full frame and same-frame leaf crop.
