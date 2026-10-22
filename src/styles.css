@@ -1827,3 +1827,11 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
   .ar-camera-surface[data-landscape=true] .ar-cooling-readout { margin-top: 1.4rem; }
   .ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
 }
+
+/* Accordion for the specimen balance: smartphones only; on tablets the toggle is hidden and the balance always open. */
+.ar-dock-toggle { display: none; }
+@media (max-width: 599px), (max-height: 599px) {
+  .ar-dock-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: .5rem; min-height: 2rem; padding: .125rem 0; font-size: .72rem; font-weight: 600; color: var(--camera-ink); text-align: left; font-variant-numeric: tabular-nums; }
+  .ar-specimen-dock[data-collapsed] .ar-dock-body { display: none; }
+  .ar-specimen-dock[data-collapsed] { padding-bottom: .375rem; }
+}
