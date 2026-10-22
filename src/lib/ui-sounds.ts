@@ -17,13 +17,24 @@ export const TABLET_CLICK_VOLUME = 0.6;
  */
 export function uiClickVolume(): number {
   if (typeof window === "undefined" || !isInstalledApp() || !isTouchDevice()) return 0;
-  const shortSide = Math.min(window.screen?.width || window.innerWidth, window.screen?.height || window.innerHeight);
-  return shortSide < 600 ? UI_CLICK_VOLUME : TABLET_CLICK_VOLUME;
+  return isTabletScreen() ? TABLET_CLICK_VOLUME : UI_CLICK_VOLUME;
 }
+
+function isTabletScreen(): boolean {
+  const shortSide = Math.min(window.screen?.width || window.innerWidth, window.screen?.height || window.innerHeight);
+  return shortSide >= 600;
+}
+
+/**
+ * Tablet voicing: larger speakers reproduce the low knock of the tap as a dull thud, so the
+ * tablet chain trims the lows (high-pass), lifts the bright tick (high shelf) and rounds the
+ * harsh top (low-pass) for a crisp, glassy click at the softer tablet volume.
+ */
+export const TABLET_CLICK_TONE = { highpassHz: 900, shelfHz: 3200, shelfGainDb: 4, lowpassHz: 9500 } as const;
 
 function tap(): void {
   const volume = uiClickVolume();
-  if (volume > 0) playCompareClick(volume);
+  if (volume > 0) playCompareClick(volume, isTabletScreen() ? TABLET_CLICK_TONE : null);
 }
 let context: AudioContext | undefined;
 let click: Promise<AudioBuffer | null> | undefined;
@@ -33,7 +44,8 @@ function audioContext(): AudioContext | undefined {
   if (typeof window === "undefined") return undefined;
   const Audio = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Audio) return undefined;
-  if (!context || context.state === "closed") context = new Audio();
+  // "interactive" asks for the shortest output buffer, so the tap lands with the touch.
+  if (!context || context.state === "closed") context = new Audio({ latencyHint: "interactive" });
   return context;
 }
 
@@ -50,7 +62,7 @@ export function preloadCompareClick(): Promise<AudioBuffer | null> {
 }
 
 /** Keyboard-style tap (like Gboard keys or the PSP menu): a bright noise tick, a short tonal body, a faint knock and a high shimmer, played back at double speed (~25 ms); plays at once when already decoded. */
-export function playCompareClick(volume = UI_CLICK_VOLUME): void {
+export function playCompareClick(volume = UI_CLICK_VOLUME, tone: typeof TABLET_CLICK_TONE | null = null): void {
   try {
     const ctx = audioContext();
     if (!ctx) return;
@@ -62,8 +74,18 @@ export function playCompareClick(volume = UI_CLICK_VOLUME): void {
         const gain = ctx.createGain();
         source.buffer = buffer;
         gain.gain.value = Math.min(1, Math.max(0, volume));
-        source.connect(gain).connect(ctx.destination);
-        source.onended = () => { source.disconnect(); gain.disconnect(); };
+        const filters: BiquadFilterNode[] = [];
+        if (tone) {
+          const filter = (type: BiquadFilterType, frequency: number, gainDb = 0) => {
+            const f = ctx.createBiquadFilter();
+            f.type = type; f.frequency.value = frequency; f.gain.value = gainDb;
+            filters.push(f);
+            return f;
+          };
+          source.connect(filter("highpass", tone.highpassHz)).connect(filter("highshelf", tone.shelfHz, tone.shelfGainDb)).connect(filter("lowpass", tone.lowpassHz)).connect(gain);
+        } else source.connect(gain);
+        gain.connect(ctx.destination);
+        source.onended = () => { source.disconnect(); filters.forEach((f) => f.disconnect()); gain.disconnect(); };
         source.start();
       } catch { /* Audio rejection must not block the choice. */ }
     };

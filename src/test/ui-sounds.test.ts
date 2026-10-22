@@ -103,3 +103,31 @@ describe("compare card click", () => {
     expect(() => playCompareClick()).not.toThrow();
   });
 });
+
+describe("tablet click voicing", () => {
+  it("filters the tap on tablets (no thud, crisp tick) and leaves phones untouched", async () => {
+    vi.resetModules();
+    const filters: Array<{ type: string; frequency: number }> = [];
+    const node = () => ({ connect: vi.fn().mockReturnThis(), disconnect: vi.fn() });
+    vi.stubGlobal("AudioContext", vi.fn(function () {
+      return {
+        state: "running", destination: {}, decodeAudioData: async () => ({ duration: 0.03 }),
+        createBufferSource: () => ({ ...node(), start: vi.fn() }),
+        createGain: () => ({ ...node(), gain: { value: 1 } }),
+        createBiquadFilter: () => {
+          const f = { ...node(), type: "", frequency: { value: 0 }, gain: { value: 0 } };
+          filters.push(f as unknown as { type: string; frequency: number });
+          return f;
+        },
+      };
+    }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1]), { headers: { "content-type": "audio/wav" } })));
+    const { playCompareClick, TABLET_CLICK_TONE } = await import("@/lib/ui-sounds");
+    playCompareClick(0.6);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(filters).toHaveLength(0);
+    playCompareClick(0.6, TABLET_CLICK_TONE);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(filters.map((f) => f.type)).toEqual(["highpass", "highshelf", "lowpass"]);
+  });
+});
