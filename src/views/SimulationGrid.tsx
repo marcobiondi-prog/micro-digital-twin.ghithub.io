@@ -1,6 +1,6 @@
 import { FormEvent, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { CloudSun, Droplets, Grape, LoaderCircle, LocateFixed, MapPin, Search, Sprout, Thermometer, TreePine, TrendingDown, Umbrella } from "lucide-react";
+import { CloudSun, Droplets, Grape, LoaderCircle, LocateFixed, Lock, MapPin, Search, Sprout, Thermometer, TreePine, TrendingDown, Umbrella } from "lucide-react";
 import { Card, StatusBadge } from "@/views/health";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -167,9 +167,10 @@ function LocationMapPreview({ location }: { location: SearchedLocation }) {
   // With a browser key (Maps Embed API, referrer-restricted) use the official embed;
   // otherwise Google's keyless classic embed, so the preview is always Google Maps.
   const key = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY;
-  // The photorealistic 3D view is Premium: signed-in users only; guests keep the 2D map.
+  // The photorealistic 3D view is Premium: everyone sees the 2D/3D switch, only signed-in users open 3D.
   const premium = useSignedIn();
   const has3d = Boolean(key) && premium;
+  const [lockedHint, setLockedHint] = useState(false);
   const [view, setView] = useState<"2d" | "3d">("2d");
   // 3D grows the panel for a better view; 2D shrinks it back first, then swaps to the embed.
   const [expanded, setExpanded] = useState(false);
@@ -196,7 +197,14 @@ function LocationMapPreview({ location }: { location: SearchedLocation }) {
     : `https://maps.google.com/maps?q=${encodeURIComponent(coordinates)}&z=16&hl=it&output=embed`;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`;
   // The photorealistic 3D view needs the browser key (Maps JavaScript API + Map Tiles API): without it only 2D is offered.
-  const toggle = has3d && <div className="flex gap-1 rounded-full bg-muted p-1" role="group" aria-label="Vista della mappa">{(["2d", "3d"] as const).map((v) => <Button key={v} type="button" size="sm" variant={view === v ? "default" : "ghost"} aria-pressed={view === v} onClick={() => choose(v)} className="h-9 min-w-12 rounded-full px-4 text-sm font-semibold">{v === "2d" ? "2D" : "3D"}</Button>)}</div>;
+  const toggle = key && <div className="flex gap-1 rounded-full bg-muted p-1" role="group" aria-label="Vista della mappa">{(["2d", "3d"] as const).map((v) => {
+    const locked = v === "3d" && !premium;
+    return <Button key={v} type="button" size="sm" variant={view === v && !locked ? "default" : "ghost"} aria-pressed={view === v && !locked}
+      aria-label={locked ? "3D, riservata agli utenti Premium: accedi per usarla" : undefined}
+      onClick={() => { if (locked) setLockedHint(true); else { setLockedHint(false); choose(v); } }}
+      className="h-9 min-w-12 gap-1 rounded-full px-4 text-sm font-semibold">{locked && <Lock className="size-3.5" aria-hidden="true" />}{v === "2d" ? "2D" : "3D"}</Button>;
+  })}</div>;
+  const hint = lockedHint && !premium && <p role="status" className="border-t border-border/60 bg-background/95 px-2 py-1.5 text-xs text-muted-foreground">La vista 3D è riservata agli utenti Premium: accedi o registrati dal menu account.</p>;
   const footer = <span className="flex items-center justify-between gap-2 border-t border-border/60 bg-background/95 px-2 py-1.5 text-xs font-medium text-foreground">{toggle || <span />}<a href={mapsUrl} target="_blank" rel="noreferrer" aria-label={`Apri ${location.label} in Google Maps`} className="inline-flex items-center gap-1">Apri in Google Maps<MapPin className="size-3 shrink-0 text-primary" aria-hidden="true" /></a></span>;
   if (view === "3d" && has3d && key) return <div ref={panel} className="flex min-w-0 flex-col overflow-hidden rounded-md border bg-lab-surface">
     <div className={cn("w-full transition-[height] duration-300 ease-out motion-reduce:transition-none", expanded ? "h-72 sm:h-80 lg:h-96" : "h-36 sm:h-40")}>
@@ -209,6 +217,7 @@ function LocationMapPreview({ location }: { location: SearchedLocation }) {
       <iframe key={coordinates} title={`Mappa di ${location.label}`} src={src} loading="lazy" referrerPolicy="strict-origin-when-cross-origin" className="pointer-events-none block h-36 w-full border-0 sm:h-40" />
     </a>
     {footer}
+    {hint}
   </div>;
 }
 
