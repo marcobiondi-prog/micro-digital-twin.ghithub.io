@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, Leaf, Satellite, Thermometer } from "lucide-react";
 import { Card } from "@/views/health";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { getCopernicusReading } from "@/controllers/copernicus.functions";
+import { loadCopernicus } from "@/views/copernicus-client";
 import { ndviLabel, type CopernicusReading } from "@/models/copernicus";
 import { useLab } from "@/models/lab-store";
 
@@ -12,7 +11,6 @@ const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("it
 
 /** Premium (signed-in): real Copernicus satellite readings for the selected place, on demand. */
 export function CopernicusPanel({ kind }: { kind: "urban" | "vineyard" }) {
-  const read = useServerFn(getCopernicusReading);
   const lab = useLab();
   const location = kind === "urban" ? lab.urban.location : lab.vineyard.location;
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -32,7 +30,7 @@ export function CopernicusPanel({ kind }: { kind: "urban" | "vineyard" }) {
     if (loading) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const r = await read({ data: { lat: location.lat, lng: location.lng } });
+      const r = await loadCopernicus(location.lat, location.lng);
       if (!r.configured) setError("Copernicus non è ancora configurato sul server (CDSE_CLIENT_ID e CDSE_CLIENT_SECRET).");
       else setResult(r);
     } catch { setError("Impossibile contattare Copernicus. Verifica di aver effettuato l’accesso e riprova."); }
@@ -52,7 +50,7 @@ export function CopernicusPanel({ kind }: { kind: "urban" | "vineyard" }) {
       <div id={`copernicus-panel-${kind}`} className="lab-media-body" data-open={open} aria-hidden={!open} inert={!open}>
         <div className="lab-media-inner">
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Ultime immagini senza nuvole di Sentinel-2 (vegetazione, ~250 m attorno al punto) e Sentinel-3 (temperatura della superficie al passaggio del mattino, ~1 km). Dati reali informativi: la griglia del Lab resta una simulazione.</p>
+            <p className="text-xs text-muted-foreground">Gli stessi dati accompagnano la fotocamera IA: compaiono nella stima termica, guidano la nota sul calore e finiscono nella didascalia delle foto. Ultime immagini senza nuvole di Sentinel-2 (vegetazione, ~250 m attorno al punto) e Sentinel-3 (temperatura della superficie al passaggio del mattino, ~1 km). Dati reali informativi: la griglia del Lab resta una simulazione.</p>
             <Button onClick={run} disabled={loading} className="rounded-full">{loading ? "Lettura dei satelliti…" : "Leggi i dati satellitari"}</Button>
             {error && <p role="alert" className="rounded-xl bg-danger/10 p-3 text-sm text-danger">{error}</p>}
             {result && <div className="grid gap-3 sm:grid-cols-2">

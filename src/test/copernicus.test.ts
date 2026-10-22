@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bboxAround, latestValue, ndviLabel, ndviRequest, surfaceTempRequest } from "@/models/copernicus";
+import { bboxAround, latestValue, ndviLabel, ndviRequest, satelliteContext, satelliteLine, satellitePrompt, surfaceTempRequest } from "@/models/copernicus";
+import { captureSummaryLines } from "@/models/ar-capture-summary";
 
 describe("Copernicus requests", () => {
   it("builds a box of the requested half-size around the point", () => {
@@ -37,5 +38,27 @@ describe("ndviLabel", () => {
     expect(ndviLabel(0.05)).toMatch(/asfalto/);
     expect(ndviLabel(0.5)).toBe("Vegetazione buona");
     expect(ndviLabel(0.8)).toMatch(/densa/);
+  });
+});
+
+describe("AI camera satellite context", () => {
+  const reading = { ndvi: { value: 0.42, date: "2026-10-12", pixels: 2500 }, surfaceTemp: { value: 31.4, date: "2026-10-20", pixels: 9 }, errors: [] };
+  it("keeps only the values that were read", () => {
+    expect(satelliteContext(reading)).toEqual({ ndvi: 0.42, ndviDate: "2026-10-12", surfaceTemp: 31.4, tempDate: "2026-10-20" });
+    expect(satelliteContext({ ndvi: null, surfaceTemp: reading.surfaceTemp, errors: [] })).toEqual({ surfaceTemp: 31.4, tempDate: "2026-10-20" });
+    expect(satelliteContext({ ndvi: null, surfaceTemp: null, errors: [] })).toBeNull();
+  });
+  it("writes one caption line and an honest prompt", () => {
+    const line = satelliteLine(satelliteContext(reading));
+    expect(line).toMatch(/^Satellite Copernicus · NDVI 0,42 vegetazione moderata \(12 ott\) · superficie 31 °C \(20 ott\)$/);
+    const prompt = satellitePrompt(satelliteContext(reading));
+    expect(prompt).toContain("NON misure della pianta");
+    expect(prompt).toContain("0.42");
+    expect(satellitePrompt(null)).toBe("");
+  });
+  it("adds the satellite line to the photo caption", () => {
+    const lines = captureSummaryLines({ commonName: "Leccio", scientificName: "Quercus ilex", level: "Specie probabile", count: 2, cooling: 1.2, shade: 40 }, "Piazza", "Satellite Copernicus · NDVI 0,42");
+    expect(lines.at(-2)).toBe("Satellite Copernicus · NDVI 0,42");
+    expect(captureSummaryLines(null, "Piazza", "Satellite Copernicus · NDVI 0,42").at(-1)).toBe("Satellite Copernicus · NDVI 0,42");
   });
 });

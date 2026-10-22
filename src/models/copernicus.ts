@@ -82,3 +82,35 @@ export function ndviLabel(ndvi: number): string {
   if (ndvi < 0.65) return "Vegetazione buona";
   return "Vegetazione densa e vigorosa";
 }
+
+/** Area context sent with an AI camera scan: satellite values for the surroundings, never the single plant. */
+export type SatelliteContext = { ndvi?: number | undefined; ndviDate?: string | undefined; surfaceTemp?: number | undefined; tempDate?: string | undefined };
+
+export function satelliteContext(reading: CopernicusReading | null | undefined): SatelliteContext | null {
+  if (!reading?.ndvi && !reading?.surfaceTemp) return null;
+  return {
+    ...(reading.ndvi ? { ndvi: reading.ndvi.value, ndviDate: reading.ndvi.date } : {}),
+    ...(reading.surfaceTemp ? { surfaceTemp: reading.surfaceTemp.value, tempDate: reading.surfaceTemp.date } : {}),
+  };
+}
+
+const shortDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+
+/** One caption/HUD line, e.g. "Satellite Copernicus · NDVI 0,42 vegetazione moderata (12 ott) · superficie 31 °C (20 ott)". */
+export function satelliteLine(context: SatelliteContext | null): string | null {
+  if (!context) return null;
+  const parts = ["Satellite Copernicus"];
+  if (context.ndvi !== undefined) parts.push(`NDVI ${context.ndvi.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${ndviLabel(context.ndvi).toLowerCase()}${context.ndviDate ? ` (${shortDay(context.ndviDate)})` : ""}`);
+  if (context.surfaceTemp !== undefined) parts.push(`superficie ${context.surfaceTemp.toLocaleString("it-IT", { maximumFractionDigits: 0 })} °C${context.tempDate ? ` (${shortDay(context.tempDate)})` : ""}`);
+  return parts.join(" · ");
+}
+
+/** Prompt addendum for the AI camera: calibrates the heat note, never replaces what the photo shows. */
+export function satellitePrompt(context: SatelliteContext | null | undefined): string {
+  if (!context || (context.ndvi === undefined && context.surfaceTemp === undefined)) return "";
+  const facts = [
+    context.ndvi !== undefined ? `NDVI medio Sentinel-2 dell'area (~250 m) ${context.ndvi.toFixed(2)} del ${context.ndviDate ?? "periodo recente"} (${ndviLabel(context.ndvi).toLowerCase()})` : null,
+    context.surfaceTemp !== undefined ? `temperatura della superficie Sentinel-3 (~1 km, passaggio del mattino) ${context.surfaceTemp.toFixed(1)} °C del ${context.tempDate ?? "periodo recente"}` : null,
+  ].filter(Boolean).join("; ");
+  return `Dati satellitari Copernicus dell'area circostante (contesto, NON misure della pianta o del terreno inquadrati): ${facts}. Usali solo per contestualizzare heatNote (es. area poco verde o superficie calda) citandoli come "dati satellitari dell'area"; non cambiano specie, conteggi o box.`;
+}
