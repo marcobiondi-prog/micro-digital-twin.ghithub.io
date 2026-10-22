@@ -62,7 +62,7 @@ export function createTrackZoomer(track: MediaStreamTrack | undefined) {
 }
 
 /** Haptic patterns (ms), like a lens dial: light tick each 0.5×, firm detent on a lens stop, double bump at the limits. */
-export const ZOOM_HAPTICS = { tick: [10], stop: [28, 6, 18], limit: [40, 30, 40] } as const;
+export const ZOOM_HAPTICS = { tick: [22], stop: [55, 8, 40], limit: [80, 40, 80] } as const;
 
 /**
  * Feedback for a zoom change from `prev` to `next`: the limit bump when reaching 1× or 5×, a detent when
