@@ -8,6 +8,12 @@ import { extractPlantPhoto } from "@/views/ar-plant-photo";
 
 type D = NonNullable<Detection>;
 type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identification: D["identification"] };
+/** One camera section's scan, set aside while another section is open. */
+type TabResult = {
+  found: string | null; soil: Soil; survey: GroundSurvey | null; species: SpeciesInfo | null; count: number;
+  taps: { x: number; y: number }[]; cooling: PlacementCooling[]; last: Parameters<ArScene["place"]> | null;
+  plantPhoto: HTMLCanvasElement | null; photoPreview: string | null; recordId: string | null; thermalMin: boolean;
+};
 import { type GroundSurvey } from "@/models/ar-recognition";
 import { AR_FOCUS, arFocusOption, defaultArFocus, scanMissing, scanPrecheck, type ArFocus } from "@/models/ar-focus";
 import type { ArScene } from "@/views/ar-scene";
@@ -29,6 +35,7 @@ import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models
 import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
+import { recordScan, updateScan } from "@/models/ar-scan-log";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -120,6 +127,9 @@ export function ArCamera({
   const chunks = useRef<Blob[]>([]);
   const taps = useRef<{ x: number; y: number }[]>([]);
   const plantedCooling = useRef<PlacementCooling[]>([]);
+  // The report entry of the scan on screen (its specimen count follows the balance).
+  const scanRecordId = useRef<string | null>(null);
+  const tabMemory = useRef(new Map<ArFocus, TabResult>());
   const layersRef = useRef<Set<Layer>>(new Set(["objects"]));
   const [layers, setLayers] = useState<Set<Layer>>(new Set(["objects"]));
   const [ready, setReady] = useState(false);
@@ -350,6 +360,7 @@ export function ArCamera({
     setRecording(false);
     taps.current = [];
     plantedCooling.current = [];
+    tabMemory.current.clear(); scanRecordId.current = null;
     countRef.current = 0;
     setCount(0);
     setPanelMin(false);
@@ -495,18 +506,47 @@ export function ArCamera({
   const resetResults = () => {
     countRef.current = 0; setCount(0);
     taps.current = []; plantedCooling.current = [];
-    last.current = null;
+    last.current = null; scanRecordId.current = null;
     setSpecies(null);
     setSoil(null);
     setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
     setFound(null);
   };
-  // A new section starts empty: any running scan stops and the previous section's result is cleared.
+  // Switching section keeps each section's own scan: the current one is set aside and the other's comes back
+  // (empty the first time). A running scan stops; completed scans are also in the report log.
+  const snapshotResults = (): TabResult => ({
+    found, soil, survey, species, count: countRef.current, taps: taps.current, cooling: plantedCooling.current,
+    last: last.current, plantPhoto: plantPhoto.current, photoPreview, recordId: scanRecordId.current, thermalMin,
+  });
+  const restoreResults = (r: TabResult) => {
+    countRef.current = r.count; setCount(r.count);
+    taps.current = r.taps; plantedCooling.current = r.cooling;
+    last.current = r.last; scanRecordId.current = r.recordId;
+    setSpecies(r.species); setSoil(r.soil); setSurvey(r.survey);
+    plantPhoto.current = r.plantPhoto; setPhotoPreview(r.photoPreview);
+    setFound(r.found); setThermalMin(r.thermalMin);
+  };
   const selectTarget = (next: ArFocus) => {
-    if (next === arFocusOption(kind, target).id) return;
+    const current = arFocusOption(kind, target).id;
+    if (next === current) return;
     cancelScan();
-    resetResults();
+    tabMemory.current.set(current, snapshotResults());
+    const saved = tabMemory.current.get(next);
+    if (saved) restoreResults(saved); else resetResults();
     setTarget(next);
+  };
+  // Every completed scan goes to the report log, photo or not.
+  const logScan = (result: string, sp: SpeciesInfo | null, ground: Soil) => {
+    scanRecordId.current = recordScan({
+      kind, target: arFocusOption(kind, target).label, context: context ?? "", result,
+      species: sp ? {
+        commonName: sp.commonName, scientificName: sp.scientificName, family: sp.family ?? null,
+        level: sp.identification?.level === "species" ? "Specie probabile" : sp.identification?.level === "genus" ? "Genere probabile" : "Identificazione incerta",
+        cooling: sp.cooling?.deltaT ?? null, shade: sp.cooling?.shadeM2 ?? null,
+      } : null,
+      soil: ground ? { label: ground.label, permeability: ground.permeability, plantable: ground.plantable, note: ground.note } : null,
+      count: 0, totalCooling: sp?.cooling ? 0 : null, totalShade: sp?.cooling ? 0 : null, satellite: satelliteText,
+    });
   };
 
   const scan = async () => {
@@ -568,6 +608,7 @@ export function ArCamera({
       if (!d) {
         playCameraSound("scan-done", 1.8);
         setFound("Terreno analizzato · nessuna specie identificata");
+        logScan("Terreno analizzato · nessuna specie identificata", null, r.soil ?? null);
         return;
       }
       const cutout = d.outline ? await extractPlantPhoto(image, d.outline) : null;
@@ -587,11 +628,14 @@ export function ArCamera({
       last.current = cutout ? args : null;
       // Nessun aggancio automatico: le copie compaiono solo con il pulsante +.
       setLayers((s) => new Set(s).add("objects"));
-      setSpecies(d.species ? { ...d.species, cooling: d.cooling, identification: d.identification } : null);
+      const identified = d.species ? { ...d.species, cooling: d.cooling, identification: d.identification } : null;
+      setSpecies(identified);
       playCameraSound("scan-done", 1.8);
-      setFound(d.species
+      const outcome = d.species
         ? `${d.species.commonName} · ${d.identification?.level === "genus" ? "genere probabile" : "specie probabile"}`
-        : `${d.label} · specie incerta, inquadra una foglia da vicino`);
+        : `${d.label} · specie incerta, inquadra una foglia da vicino`;
+      setFound(outcome);
+      logScan(outcome, identified, r.soil ?? null);
 
     } catch (error) {
       console.error("AR scan", error);
@@ -633,6 +677,9 @@ export function ArCamera({
   const shadeNow = thermalEstimate.shadeM2;
   const MAX_GREEN = MAX_SCANNED_SPECIMENS;
   const readout = coolingReadout(baseTemp, coolingNow);
+  useEffect(() => {
+    if (scanRecordId.current) updateScan(kind, scanRecordId.current, { count, totalCooling: species?.cooling ? coolingNow : null, totalShade: species?.cooling ? shadeNow : null });
+  }, [kind, count, coolingNow, shadeNow, species]);
   // Each change of specimens flashes its own step (e.g. "−0,4 °C") next to the before → after readout.
   const [stepFlash, setStepFlash] = useState<{ key: number; delta: number; up: boolean } | null>(null);
   const [balanceMin, setBalanceMin] = useState(false);

@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { scenarioCsv, scenarioGeoJson } from "@/models/scenario-export";
 import { useLabMedia } from "@/models/lab-media-store";
+import { scanReportRows, useArScans } from "@/models/ar-scan-log";
 import { noise } from "@/models/data";
 import { splitLocation } from "@/views/SimulationGrid";
 import { MapPin } from "lucide-react";
@@ -500,6 +501,8 @@ function Exec() {
   const loading = useDashboardLoading(ctx);
   const labState = useLab(), um = urbanMetrics(labState.urban), vm = vineMetrics(labState.vineyard);
   const reportMedia = useLabMedia(ctx === "Urbano" ? "urban" : "vineyard");
+  // Every AI camera scan of this flow, photo or not.
+  const scanRows = scanReportRows(useArScans(ctx === "Urbano" ? "urban" : "vineyard"));
   const idx = ctx === "Urbano" ? [["Calore", um.heat], ["Rifugi", um.refuges], ["Verde", um.green]] : [["Stress idrico", vm.waterStress], ["Stress termico", vm.heatStress], ["Maturità", 30]];
   const lv = (v: number) => (v < 35 ? "basso" : v < 65 ? "moderato" : "elevato");
   const water = [{ m: "Giu", domanda: 420, disponibile: 520 }, { m: "Lug", domanda: 610, disponibile: 470 }, { m: "Ago", domanda: 680, disponibile: 410 }, { m: "Set", domanda: 450, disponibile: 480 }];
@@ -510,7 +513,7 @@ function Exec() {
   const step = async (label: string, pct: number) => { setProgress({ label, pct }); await new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 16))); };
   const [prepared, setPrepared] = useState(false);
   // Report tenuto in memoria: finché i dati non cambiano, PDF, copia e stampa riusano lo stesso.
-  const cacheKey = () => JSON.stringify([ctx, labRows, idx, ctx === "Urbano" ? urbanDashRows : vineDashRows, reportMedia.map(m => [m.id, m.name, m.size])]);
+  const cacheKey = () => JSON.stringify([ctx, labRows, idx, ctx === "Urbano" ? urbanDashRows : vineDashRows, reportMedia.map(m => [m.id, m.name, m.size]), scanRows]);
   const getDoc = () => {
     const k = cacheKey();
     let e = reportCache.get(k);
@@ -561,7 +564,7 @@ function Exec() {
     ...ir.notes.slice(0, 6).map((n): [string, string] => [`Quaderno ${n.d}`, n.t]),
     ...v.zones.map((z, i): [string, string] => [`Zona ${i + 1}`, `stress ${Math.round(vm.results[i]?.s ?? 0)} (${vm.results[i]?.risk ?? "-"})`]),
   ];
-  const text = [`MICRO DIGITAL TWIN`, `REPORT SINTETICO DECISIONI — ${ctx}`, `Data: ${stamp}`, "", "Valori dal Decision Lab:", ...labRows.map(([k, x]) => `- ${k}: ${x}`), "", "Indici normalizzati:", ...idx.map(([k, x]) => `- ${k}: ${x}/100 (${lv(x as number)})`), "", ...(ctx === "Urbano" ? ["Dashboard Urbana:", ...urbanDashRows.map(([k, x]) => `- ${k}: ${x}`)] : ["Bilancio idrico (m³):", ...water.map((w) => `- ${w.m}: domanda ${w.domanda}, disponibile ${w.disponibile}, saldo ${w.disponibile - w.domanda}`), "", "Dashboard Vitivinicola:", ...vineDashRows.map(([k, x]) => `- ${k}: ${x}`)]), "", "Nota: valori dimostrativi, da validare con un tecnico."].join("\n");
+  const text = [`MICRO DIGITAL TWIN`, `REPORT SINTETICO DECISIONI — ${ctx}`, `Data: ${stamp}`, "", "Valori dal Decision Lab:", ...labRows.map(([k, x]) => `- ${k}: ${x}`), "", "Indici normalizzati:", ...idx.map(([k, x]) => `- ${k}: ${x}/100 (${lv(x as number)})`), "", ...(ctx === "Urbano" ? ["Dashboard Urbana:", ...urbanDashRows.map(([k, x]) => `- ${k}: ${x}`)] : ["Bilancio idrico (m³):", ...water.map((w) => `- ${w.m}: domanda ${w.domanda}, disponibile ${w.disponibile}, saldo ${w.disponibile - w.domanda}`), "", "Dashboard Vitivinicola:", ...vineDashRows.map(([k, x]) => `- ${k}: ${x}`)]), ...(scanRows.length ? ["", "Scansioni fotocamera AI:", ...scanRows.map(([k, x]) => `- ${k}: ${x}`)] : []), "", "Nota: valori dimostrativi, da validare con un tecnico."].join("\n");
   // Report PDF con intestazione del sito e grafica coerente con l'app (usato da Scarica e Stampa).
   async function buildPdfImpl() {
     await step("Preparazione del report…", 5);
@@ -571,7 +574,7 @@ function Exec() {
     const C = { turq: [20, 184, 196] as RGB, primary: [37, 99, 235] as RGB, ok: [34, 179, 102] as RGB, warn: [240, 170, 40] as RGB, danger: [222, 72, 52] as RGB, water: [40, 150, 220] as RGB, ink: [22, 28, 40] as RGB, muted: [110, 118, 132] as RGB, line: [226, 230, 236] as RGB, soft: [244, 247, 250] as RGB };
     const accent: RGB = ctx === "Urbano" ? [30, 150, 215] : [170, 40, 100];
     const levelRGB = (x: number): RGB => (x < 35 ? C.ok : x < 65 ? C.warn : C.danger);
-    const clean = (t: string) => t.replace(/[−–—]/g, "-").replace(/Δ/g, "Delta ").replace(/→/g, "->").replace(/·/g, "-").replace(/³/g, "3");
+    const clean = (t: string) => t.replace(/[−–—]/g, "-").replace(/Δ/g, "Delta ").replace(/→/g, "->").replace(/·/g, "-").replace(/³/g, "3").replace(/≈/g, "~");
     const W = 210, M = 15, CW = W - 2 * M;
     let y = 0;
     const header = () => {
@@ -661,6 +664,8 @@ function Exec() {
     await step("Compilazione delle tabelle…", 25);
     if (ctx === "Urbano") { section("Dashboard Urbana"); table(urbanDashRows); }
     else { section("Dashboard Vitivinicola"); table(vineDashRows); }
+    // Scansioni della fotocamera AI: ognuna resta nel report anche senza foto (stime indicative).
+    if (scanRows.length) { section(`Scansioni fotocamera AI - ${ctx}`); table(scanRows); }
     // Foto e video caricati nel Decision Lab (elenco + miniature delle foto).
     const { currentMedia } = await import("@/models/lab-media-store");
     const toData = async (url: string) => {
