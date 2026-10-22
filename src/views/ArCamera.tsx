@@ -36,6 +36,7 @@ import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
 import { clearScans, recordScan, updateScan, useArScans } from "@/models/ar-scan-log";
+import { enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -331,7 +332,9 @@ export function ArCamera({
   useEffect(() => {
     if (!mode) return;
     setArOrientationActive(true);
-    return () => setArOrientationActive(false);
+    // No white system bars: fullscreen where allowed, else a dark theme-color (lib/camera-chrome).
+    enterCameraChrome();
+    return () => { setArOrientationActive(false); exitCameraChrome(); };
   }, [mode]);
 
   useEffect(() => {
@@ -676,13 +679,15 @@ export function ArCamera({
   const removeLast = removeGreen;
   // "Elimina tutti" also empties this flow's scan records (report log and every section's result), after a confirm.
   const scanRecords = useArScans(kind);
-  const removeAll = () => {
-    const n = scanRecords.length;
-    if (n && !window.confirm(`Eliminare gli esemplari e ${n === 1 ? "la scansione registrata" : `tutte le ${n} scansioni registrate`} nel report ${kind === "urban" ? "urbano" : "vitivinicolo"}?`)) return;
+  // The confirm lives inside the camera surface (not window.confirm), so it turns with the camera in landscape.
+  const [confirmClear, setConfirmClear] = useState(false);
+  const clearEverything = () => {
+    setConfirmClear(false);
     clearScans(kind);
     tabMemory.current.clear();
     resetResults();
   };
+  const removeAll = () => { if (scanRecords.length) setConfirmClear(true); else clearEverything(); };
   const thermalEstimate = scannedSpecimenThermal(count, species?.cooling ?? null);
   const coolingNow = thermalEstimate.deltaT;
   const shadeNow = thermalEstimate.shadeM2;
@@ -990,6 +995,17 @@ export function ArCamera({
               {scanning && <span className="ar-viewfinder-scan"><span className="ar-viewfinder-sweep" /></span>}
             </div>}
             {guideOpen && <div className="ar-tutorial-veil" data-camera-controls aria-hidden="true" />}
+            {confirmClear && <div className="ar-confirm-veil" data-camera-controls onClick={() => setConfirmClear(false)}>
+              <div className="ar-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ar-confirm-title" aria-describedby="ar-confirm-text"
+                onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") setConfirmClear(false); }}>
+                <p id="ar-confirm-title" className="ar-confirm-title"><Trash2 className="size-4" aria-hidden="true" />Eliminare tutto?</p>
+                <p id="ar-confirm-text" className="ar-confirm-text">Gli esemplari e {scanRecords.length === 1 ? "la scansione registrata" : `tutte le ${scanRecords.length} scansioni registrate`} nel report {kind === "urban" ? "urbano" : "vitivinicolo"} verranno eliminati.</p>
+                <div className="ar-confirm-actions">
+                  <Button type="button" variant="ghost" className="camera-tool" autoFocus onClick={() => setConfirmClear(false)}>Annulla</Button>
+                  <Button type="button" variant="ghost" className="camera-tool ar-confirm-delete" onClick={clearEverything}>Elimina</Button>
+                </div>
+              </div>
+            </div>}
             {guideOpen && <div className={`ar-tutorial ${Math.abs(viewport.rotation) === 90 ? "touch-pan-x" : "touch-pan-y"}`} data-camera-controls role="dialog" aria-label="Mini tutorial fotocamera AI"
               onPointerDown={event => {
                 if (!event.isPrimary || event.pointerType === "mouse" || (event.target instanceof Element && event.target.closest("button"))) return;
