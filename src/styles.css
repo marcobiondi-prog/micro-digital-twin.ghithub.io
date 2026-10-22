@@ -1824,6 +1824,8 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
    above the capture row (Scansiona / shutter) and scrolls the rest. */
 @media (max-width: 599px), (max-height: 599px) {
   .ar-camera-surface[data-landscape=true] .ar-specimen-dock { align-self: flex-end; width: min(52%, 22rem); }
+  /* Esito / Analisi / AR tools take the same right-hand column as the balance, clear of the summary. */
+  .ar-camera-surface[data-landscape=true] .ar-tools-panel { width: min(100%, 22rem); margin-inline: auto 0; }
   .ar-camera-surface[data-landscape=true] .ar-cooling-readout { margin-top: 1.4rem; }
   .ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
 }
