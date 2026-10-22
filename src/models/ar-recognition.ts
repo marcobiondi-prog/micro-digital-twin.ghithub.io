@@ -45,7 +45,8 @@ export const arRecognitionSchema = z.object({
 export function estimateCooling(crownM: number, density: number, evergreen: boolean) {
   const shadeM2 = Math.PI * (crownM / 2) ** 2;
   const deltaT = Math.min(3, shadeM2 * 0.035 * (0.4 + density) * (evergreen ? 1.2 : 1));
-  return { deltaT: Math.round(deltaT * 10) / 10, shadeM2: Math.round(shadeM2) };
+  // Thousandths, so small plants (a sansevieria, a pot) keep a visible per-specimen effect instead of 0.
+  return { deltaT: Math.round(deltaT * 1000) / 1000, shadeM2: Math.round(shadeM2) };
 }
 
 /** A new analysis invalidates the previous planting template, not existing placements. */

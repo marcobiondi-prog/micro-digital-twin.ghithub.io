@@ -34,7 +34,9 @@ describe("AR recognition rules", () => {
   });
   it("keeps the indicative species cooling capped at 3 °C", () => {
     expect(estimateCooling(30, 1, true).deltaT).toBe(3);
-    expect(estimateCooling(4, 0.6, false)).toEqual({ deltaT: 0.4, shadeM2: 13 });
+    expect(estimateCooling(4, 0.6, false)).toEqual({ deltaT: 0.44, shadeM2: 13 });
+    // A small potted plant keeps a non-zero effect instead of rounding to 0.
+    expect(estimateCooling(0.5, 0.8, true).deltaT).toBeGreaterThan(0);
   });
   it("preserves denial status and the safe reason without retrying", () => {
     const error = gatewayError(403, { message: "Vendor access disabled" });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactPlantHeight, nextPlantHeight, placementThermal, isPlacementOutsideHud, scannedSpecimenThermal, scannedSpecimenCount, coolingReadout } from "@/models/ar-placement";
+import { compactPlantHeight, nextPlantHeight, placementThermal, isPlacementOutsideHud, scannedSpecimenThermal, scannedSpecimenCount, coolingReadout, coolingLabel } from "@/models/ar-placement";
 
 describe("Photographic AR placement", () => {
   it("changes temperature reduction and shade with scanned specimen count, including zero", () => {
@@ -50,7 +50,14 @@ describe("Photographic AR placement", () => {
 });
 describe("coolingReadout", () => {
   it("shows before → after when the air temperature is known, the cooling alone otherwise", () => {
-    expect(coolingReadout(31.44, 1.62)).toEqual({ before: 31.4, after: 29.8, delta: 1.6 });
-    expect(coolingReadout(null, 0.84)).toEqual({ before: null, after: null, delta: 0.8 });
+    expect(coolingReadout(31.44, 1.62)).toEqual({ before: 31.4, after: 29.8, delta: 1.6, digits: 1 });
+    expect(coolingReadout(null, 0.84)).toEqual({ before: null, after: null, delta: 0.8, digits: 1 });
+  });
+  it("switches to hundredths for small plants so each specimen still changes the readout", () => {
+    expect(coolingReadout(17.8, 0.06)).toEqual({ before: 17.8, after: 17.74, delta: 0.06, digits: 2 });
+    expect(coolingLabel(0.4)).toBe("≈ −0,4 °C");
+    expect(coolingLabel(0.03)).toBe("≈ −0,03 °C");
+    expect(coolingLabel(0.003)).toBe("< 0,01 °C");
+    expect(coolingLabel(0)).toBe("≈ −0,0 °C");
   });
 });

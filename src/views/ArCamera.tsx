@@ -27,7 +27,7 @@ import { createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomHaptic, zo
 import { hapticTick } from "@/lib/haptics";
 import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models/copernicus";
 import { loadCopernicus } from "@/views/copernicus-client";
-import { coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
+import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
 
 type Mode = "photo" | "video";
@@ -634,7 +634,7 @@ export function ArCamera({
   const MAX_GREEN = MAX_SCANNED_SPECIMENS;
   const readout = coolingReadout(baseTemp, coolingNow);
   // Each change of specimens flashes its own step (e.g. "−0,4 °C") next to the before → after readout.
-  const [stepFlash, setStepFlash] = useState<{ key: number; delta: number } | null>(null);
+  const [stepFlash, setStepFlash] = useState<{ key: number; delta: number; up: boolean } | null>(null);
   const [balanceMin, setBalanceMin] = useState(false);
   // Room between the thermal summary and the bottom HUD (balance, zoom, capture), so the expanded summary
   // stops above the balance in portrait and scrolls the rest. Measured on screen; only portrait CSS uses it.
@@ -658,18 +658,25 @@ export function ArCamera({
     }
   });
   useEffect(() => () => hudObserver.current?.ro.disconnect(), []);
-  const lastCooling = useRef(coolingNow);
+  // Every specimen added or removed flashes, even when a small plant changes only hundredths of a degree.
+  const lastStep = useRef({ count, cooling: coolingNow });
   useEffect(() => {
-    const step = Math.round((coolingNow - lastCooling.current) * 10) / 10;
-    lastCooling.current = coolingNow;
-    if (!step) return;
-    setStepFlash({ key: Date.now(), delta: step });
+    const prev = lastStep.current;
+    lastStep.current = { count, cooling: coolingNow };
+    if (count === prev.count && coolingNow === prev.cooling) return;
+    const delta = Math.round((coolingNow - prev.cooling) * 1000) / 1000;
+    setStepFlash({ key: Date.now(), delta, up: count < prev.count || delta < 0 });
     const timer = window.setTimeout(() => setStepFlash(null), 1400);
     return () => window.clearTimeout(timer);
-  }, [coolingNow]);
-  const fmtC = (v: number) => v.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }, [count, coolingNow]);
+  // "−0,03 °C" for a step, "< 0,01 °C" when it is too small to print, "±0,0 °C" at the 3 °C cap.
+  const flashText = (f: { delta: number; up: boolean }) => {
+    const amount = coolingAmount(f.delta);
+    return amount.startsWith("<") ? `${amount} °C` : `${f.delta ? (f.up ? "+" : "−") : "±"}${amount} °C`;
+  };
+  const fmtC = (v: number, digits = 1) => v.toLocaleString("it-IT", { minimumFractionDigits: digits, maximumFractionDigits: digits });
   // Ogni esemplare in più mostra subito i gradi numerici accanto al conteggio.
-  const countDegrees = species?.cooling ? ` · ≈ −${coolingNow.toFixed(1)} °C` : "";
+  const countDegrees = species?.cooling ? ` · ${coolingLabel(coolingNow)}` : "";
   const greenControls = !scanning && (
     <div className="ar-green-controls" data-camera-controls>
       <Button variant="ghost" size="icon" className="camera-tool" aria-label="Riduci verde" title="Riduci verde" disabled={count <= 0} onClick={removeGreen}><Minus className="size-4" /></Button>
@@ -705,25 +712,25 @@ export function ArCamera({
       {/* Smartphones only (CSS hides it on tablets): fold the balance like an accordion, keeping a one-line summary;
           the header stays put and the body unfolds from top to bottom. */}
       <button type="button" className="ar-dock-toggle" aria-expanded={!balanceMin} aria-controls="ar-balance-body" onClick={() => setBalanceMin((v) => !v)}>
-        <span>Bilancia termica{balanceMin ? ` · ${count} esemplari · ${readout.after !== null ? `${fmtC(readout.after)} °C` : `≈ −${fmtC(readout.delta)} °C`}` : ""}</span>
+        <span>Bilancia termica{balanceMin ? ` · ${count} esemplari · ${readout.after !== null ? `${fmtC(readout.after, readout.digits)} °C` : coolingLabel(coolingNow)}` : ""}</span>
         {balanceMin ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" /> : <ChevronUp className="size-3.5 shrink-0" aria-hidden="true" />}
       </button>
       <div id="ar-balance-body" className="ar-dock-body" inert={balanceMin || undefined}>
       {greenControls}
       <div className="ar-thermal-balance" data-camera-controls role="slider" tabIndex={0} aria-disabled={!species?.cooling || scanning} onKeyDown={e => { if (["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "Home", "End"].includes(e.key)) { e.preventDefault(); changeGreen(e.key === "Home" ? 0 : e.key === "End" ? MAX_GREEN : countRef.current + (["ArrowRight","ArrowUp"].includes(e.key) ? 1 : -1)); } }} aria-valuemin={0} aria-valuemax={MAX_GREEN} aria-valuenow={count}
-        aria-valuetext={`${count} esemplari, riduzione stimata ${coolingNow.toFixed(1)} gradi`} aria-label="Bilancia termica simulata">
+        aria-valuetext={`${count} esemplari, riduzione stimata ${coolingAmount(coolingNow)} gradi`} aria-label="Bilancia termica simulata">
         <span className="ar-thermal-balance-labels"><span>Caldo</span><span>Fresco</span></span>
         <span className="ar-thermal-balance-track is-draggable" onPointerDown={balanceDrag}>
           <span className="ar-thermal-balance-marker" style={{ left: `${Math.min(100, Math.max(0, (count / MAX_GREEN) * 100))}%` }} />
-          {species?.cooling && <span className="ar-thermal-balance-value" style={{ left: `clamp(2.5rem, ${(count / MAX_GREEN) * 100}%, calc(100% - 2.5rem))` }} aria-live="polite">≈ −{coolingNow.toFixed(1)} °C</span>}
+          {species?.cooling && <span className="ar-thermal-balance-value" style={{ left: `clamp(2.5rem, ${(count / MAX_GREEN) * 100}%, calc(100% - 2.5rem))` }} aria-live="polite">{coolingLabel(coolingNow)}</span>}
         </span>
       </div>
       {/* Estimated perceived temperature: the place's air temperature before and after the cooling of the counted specimens. */}
       <p className="ar-cooling-readout" aria-live="polite">
         {readout.before !== null && readout.after !== null
-          ? <><span>Percepita stimata</span><span className="ar-cooling-temps">{fmtC(readout.before)} °C <span aria-hidden="true">→</span><span className="sr-only"> diventa </span> <strong>{fmtC(readout.after)} °C</strong></span></>
-          : <><span>Raffrescamento stimato</span><strong>≈ −{fmtC(readout.delta)} °C</strong></>}
-        {stepFlash && <span key={stepFlash.key} className="ar-cooling-step" data-up={stepFlash.delta < 0 || undefined}>{stepFlash.delta > 0 ? "−" : "+"}{fmtC(Math.abs(stepFlash.delta))} °C</span>}
+          ? <><span>Percepita stimata</span><span className="ar-cooling-temps">{fmtC(readout.before, readout.digits)} °C <span aria-hidden="true">→</span><span className="sr-only"> diventa </span> <strong>{fmtC(readout.after, readout.digits)} °C</strong></span></>
+          : <><span>Raffrescamento stimato</span><strong>{coolingLabel(coolingNow)}</strong></>}
+        {stepFlash && <span key={stepFlash.key} className="ar-cooling-step" data-up={stepFlash.up || undefined}>{flashText(stepFlash)}</span>}
       </p>
       {/* Copernicus stays alongside: the satellite surface temperature of the area, as a reference. */}
       {satellite?.surfaceTemp !== undefined && <p className="ar-cooling-satellite">Superficie dell’area (Sentinel-3) · {fmtC(satellite.surfaceTemp)} °C</p>}
@@ -741,7 +748,7 @@ export function ArCamera({
     thermalMin ? (
       <Button type="button" variant="ghost" data-camera-controls className="ar-thermal-summary ar-thermal-summary-min"
         onClick={() => setThermalMin(false)} aria-label="Espandi stima termica" title="Espandi stima termica">
-        <Flame className="size-4 shrink-0" /><span>{summaryText.title}{species ? ` · ${species.commonName}` : ` · ${summaryText.empty.toLowerCase()}`}{count > 0 && species?.cooling ? ` · ≈ −${coolingNow.toFixed(1)} °C` : ""}</span><ChevronUp className="size-3.5" />
+        <Flame className="size-4 shrink-0" /><span>{summaryText.title}{species ? ` · ${species.commonName}` : ` · ${summaryText.empty.toLowerCase()}`}{count > 0 && species?.cooling ? ` · ${coolingLabel(coolingNow)}` : ""}</span><ChevronUp className="size-3.5" />
       </Button>
     ) : (
     <section className="ar-thermal-summary" data-camera-controls aria-label="Risultati termici della scansione" aria-live="polite">
@@ -758,13 +765,13 @@ export function ArCamera({
       </div>
       {species && <dl className="ar-thermal-values">
         <div><dt>Specie</dt><dd>{species.commonName}<span className="block text-xs italic text-muted-foreground">{species.scientificName}{species.family ? ` · ${species.family}` : ""}</span></dd></div>
-        <div><dt>Per esemplare</dt><dd>{species.cooling ? `≈ −${species.cooling.deltaT.toFixed(1)} °C` : "n.d."}</dd></div>
+        <div><dt>Per esemplare</dt><dd>{species.cooling ? coolingLabel(species.cooling.deltaT) : "n.d."}</dd></div>
         <div><dt>Ombreggiatura</dt><dd>{species.cooling ? `≈ ${Math.round(species.cooling.shadeM2)} m²` : "n.d."}</dd></div>
       </dl>}
       {!species && <div className="ar-thermal-note"><p className="font-semibold">{summaryText.empty}</p><p>{found ?? summaryText.idle}</p></div>}
       {identificationBadge}
       {(species?.cooling || count > thermalEstimate.unknown) && <dl className="ar-thermal-values">
-        <div><dt>{"Riduzione temperatura"}</dt><dd>≈ −{coolingNow.toFixed(1)} °C</dd></div>
+        <div><dt>{"Riduzione temperatura"}</dt><dd>{coolingLabel(coolingNow)}</dd></div>
         <div><dt>Ombra teorica</dt><dd>≈ {Math.round(shadeNow)} m²</dd></div>
       </dl>}
       {thermalEstimate.unknown > 0 && <p className="ar-thermal-note">{thermalEstimate.unknown} senza stima di specie</p>}
@@ -1082,7 +1089,7 @@ export function ArCamera({
                       <span className="text-sm font-semibold">{species.commonName}</span>{" "}
                       <span className="italic text-muted-foreground">{species.scientificName}</span>
                       {species.cooling && (
-                        <span className="mt-1 block font-semibold text-primary">Raffrescamento stimato ≈ −{species.cooling.deltaT.toFixed(1)} °C · ombra ≈ {species.cooling.shadeM2} m²</span>
+                        <span className="mt-1 block font-semibold text-primary">Raffrescamento stimato {coolingLabel(species.cooling.deltaT)} · ombra ≈ {species.cooling.shadeM2} m²</span>
                       )}
                     </p>
                   ) : (
