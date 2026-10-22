@@ -1802,3 +1802,10 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 
 /* Keep the heat legend halfway down the right edge, away from the upper summary. */
 .ar-heat-legend { position:absolute; top:50%; transform:translateY(-50%); right:max(1rem, env(safe-area-inset-right)); width:3.75rem; display:flex; flex-direction:column; align-items:center; gap:.25rem; padding:.5rem .25rem; border:1px solid var(--camera-border); border-radius:999px; background:var(--camera-glass); color:var(--camera-ink); backdrop-filter:blur(12px); font-size:10px; font-weight:500; cursor:pointer; }
+
+/* AI camera zoom: Xperia-style lens chips in a glass capsule; the active chip grows and shows the live value. */
+.ar-zoom-lenses { display: flex; align-items: center; justify-content: center; gap: .375rem; margin-inline: auto; padding: .25rem; border: 1.5px solid oklch(0.98 0 0 / 55%); border-radius: 999px; background: oklch(0.12 0.005 255 / 55%); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ar-zoom-lens { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 999px; background: oklch(0.2 0.005 255 / 70%); color: oklch(0.98 0 0 / 85%); font-size: .6875rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; transition: width .18s ease, height .18s ease, background-color .18s ease, color .18s ease; }
+.ar-zoom-lens[data-active] { width: 2.5rem; height: 2.5rem; background: oklch(0.98 0 0 / 92%); color: oklch(0.16 0.008 255); font-size: .75rem; font-weight: 700; }
+.ar-zoom-lens:disabled { opacity: .45; }
+@media (prefers-reduced-motion: reduce) { .ar-zoom-lens { transition: none; } }

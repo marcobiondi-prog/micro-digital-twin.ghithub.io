@@ -23,6 +23,7 @@ import { CameraCenterCapture } from "@/views/CameraCenterCapture";
 import { CameraCaptureControl } from "@/views/CameraCaptureControl";
 import { playAiShutter, playCameraSound, preloadAiShutter, startScanLoop } from "@/lib/camera-sounds";
 import { useLab } from "@/models/lab-store";
+import { createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomLabel, ZOOM_LENSES, ZOOM_MAX, ZOOM_MIN } from "@/lib/camera-zoom";
 import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models/copernicus";
 import { loadCopernicus } from "@/views/copernicus-client";
 import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
@@ -79,6 +80,24 @@ export function ArCamera({
     return () => { alive = false; };
   }, [mode, place.lat, place.lng]);
   const satelliteText = satelliteLine(satellite);
+  // Zoom: pinch on the preview or − / + buttons; hardware where the camera allows it, the rest digital.
+  const [zoom, setZoomState] = useState(1);
+  const zoomRef = useRef(1);
+  const digitalZoomRef = useRef(1);
+  const zoomRangeRef = useRef<ReturnType<typeof trackZoomRange>>(null);
+  const zoomerRef = useRef<((value: number) => void) | null>(null);
+  const pinchFrom = useRef(1);
+  const setZoom = (value: number) => {
+    const { hardware, digital } = splitZoom(value, zoomRangeRef.current);
+    if (hardware !== null) zoomerRef.current?.(hardware);
+    digitalZoomRef.current = digital;
+    zoomRef.current = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value * 10) / 10));
+    setZoomState(zoomRef.current);
+  };
+  const onPinch = (ratio: number, start: boolean) => {
+    if (start) pinchFrom.current = zoomRef.current;
+    else setZoom(pinchZoom(pinchFrom.current, 1, ratio));
+  };
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -195,7 +214,7 @@ export function ArCamera({
       const W = 48, H = Math.max(24, Math.round(48 * view.clientHeight / view.clientWidth));
       if (sample.width !== W || sample.height !== H) { sample.width = W; sample.height = H; }
       // Stesso ritaglio "a riempimento" dell'anteprima: il mirino coincide con ciò che si vede.
-      drawCameraVideo(g, video, W, H, -rotationRef.current);
+      drawCameraVideo(g, video, W, H, -rotationRef.current, digitalZoomRef.current);
       const pixels = g.getImageData(0, 0, W, H).data;
       const found = findSubject(pixels, W, H, locked ? box : null);
       if (found) { hits++; misses = 0; } else { misses++; hits = 0; }
@@ -388,6 +407,9 @@ export function ArCamera({
         }
         streamRef.current = stream;
         setTorchSupported(supportsCameraTorch(stream.getVideoTracks()[0]));
+        zoomRangeRef.current = trackZoomRange(stream.getVideoTracks()[0]);
+        zoomerRef.current = zoomRangeRef.current ? createTrackZoomer(stream.getVideoTracks()[0]) : null;
+        digitalZoomRef.current = 1; zoomRef.current = 1; setZoomState(1);
         v.srcObject = stream;
         void v.play().catch(() => {});
         const paint = (showGrid: boolean) => {
@@ -398,6 +420,7 @@ export function ArCamera({
             {
               video: v,
               rotation: -rotationRef.current,
+              zoom: digitalZoomRef.current,
               scene: sceneRef.current,
               heat: layersRef.current.has("heat") ? (g, w, h) => thermal(g, w, h, taps.current, plantedCooling.current) : undefined,
             },
@@ -496,7 +519,7 @@ export function ArCamera({
       const video = videoRef.current;
       if (!video?.videoWidth) return;
       // Recognition and frozen preview preserve the live crop and rotation.
-      const small = freezeCameraFrame(c, video, -rotationRef.current);
+      const small = freezeCameraFrame(c, video, -rotationRef.current, digitalZoomRef.current);
       if (!small) return;
       const image = small.toDataURL("image/jpeg", 0.92);
       playCameraSound("scan-start", 1.8);
@@ -805,7 +828,7 @@ export function ArCamera({
           // Unmeasured (0) falls back to 100dvh in the CSS instead of collapsing the panels.
           ...(viewport.height ? { "--ar-camera-height": `${viewport.height}px` } : {}),
         } as CSSProperties}>
-        <CameraCloseGestures onClose={onClose} rotation={viewport.rotation}>
+        <CameraCloseGestures onClose={onClose} rotation={viewport.rotation} onPinch={ready && !scanning ? onPinch : undefined}>
         {error ? (
           <div className="p-5 text-sm text-muted-foreground">
             <p className="mb-1 font-semibold text-foreground">Realtà aumentata non disponibile</p>
@@ -1045,6 +1068,20 @@ export function ArCamera({
               </div>}
               </div>
                {!toolsOpen && specimenDock}
+               {!toolsOpen && (() => {
+                // Three chips: the neighbouring lenses on the sides, the live value in the centre (tap = back to 1×).
+                const lower = [...ZOOM_LENSES].reverse().find((l) => l < zoom - 0.05);
+                const higher = ZOOM_LENSES.find((l) => l > zoom + 0.05);
+                const side = (lens: number | undefined, label: string) => <button type="button" className="ar-zoom-lens"
+                  aria-label={lens === undefined ? label : `${label}: ${zoomLabel(lens)}`} disabled={lens === undefined || !ready || scanning}
+                  onClick={() => lens !== undefined && setZoom(lens)}>{lens ?? "·"}</button>;
+                return <div className="ar-zoom-lenses" role="group" aria-label="Zoom della fotocamera" data-camera-controls>
+                  {side(lower, "Riduci zoom")}
+                  <button type="button" className="ar-zoom-lens" data-active aria-label={`Zoom ${zoomLabel(zoom)}: tocca per tornare a 1×`}
+                    disabled={!ready || scanning} onClick={() => setZoom(1)}>{zoomLabel(zoom)}</button>
+                  {side(higher, "Aumenta zoom")}
+                </div>;
+              })()}
                <CameraCaptureControl mode={mode ?? "photo"} recording={recording} ar disabled={!ready || scanning || xrActive} onCapture={mode === "photo" ? shoot : record} left={<div className="camera-labelled-tool ar-scan-tools">
                 <Button variant="ghost" size="icon"
                   type="button"
