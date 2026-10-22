@@ -17,6 +17,18 @@ export function cameraChromeMode(doc: Pick<Document, "fullscreenEnabled"> & { do
   return doc.fullscreenEnabled && typeof doc.documentElement.requestFullscreen === "function" ? "fullscreen" : "dark-bars";
 }
 
+/**
+ * Fullscreen lifts the app's portrait lock, so phones would also rotate natively on top of the camera's
+ * own CSS rotation (a double turn that then settles). Phones keep the screen portrait and let the camera
+ * surface turn alone, as outside fullscreen; tablets (short side >= 600 px) keep rotating natively.
+ */
+export function isPhoneScreen(width: number, height: number) { return Math.min(width, height) < 600; }
+function holdPhonePortrait() {
+  if (!isPhoneScreen(screen.width, screen.height)) return;
+  const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
+  void orientation?.lock?.("portrait-primary").catch(() => { /* Unsupported host: nothing to hold. */ });
+}
+
 /** True while the camera itself asked for fullscreen; its exit must not be read as "close the camera". */
 let ownsFullscreen = false;
 export function cameraOwnsFullscreen() { return ownsFullscreen; }
@@ -33,7 +45,7 @@ export function enterCameraChrome(): Promise<boolean> {
   if (cameraChromeMode(document) !== "fullscreen" || document.fullscreenElement) return Promise.resolve(false);
   ownsFullscreen = true;
   return document.documentElement.requestFullscreen({ navigationUI: "hide" })
-    .then(() => { enteredFullscreen = true; return true; })
+    .then(() => { enteredFullscreen = true; holdPhonePortrait(); return true; })
     .catch(() => { ownsFullscreen = false; return false; /* Refused (no user activation, WebView, policy): dark bars stay. */ });
 }
 
