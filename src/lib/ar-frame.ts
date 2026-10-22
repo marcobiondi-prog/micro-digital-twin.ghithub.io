@@ -13,12 +13,15 @@ export type ArFrameSource = {
   heat?: ((g: CanvasRenderingContext2D, w: number, h: number) => void) | undefined;
   /** Counter-rotate only the footage when the HUD uses a locked-host fallback. */
   rotation?: number;
+  /** Digital zoom: centred crop factor (1 = none). */
+  zoom?: number;
 };
 
-export function drawCameraVideo(g: CanvasRenderingContext2D, video: HTMLVideoElement, width: number, height: number, rotation = 0) {
+export function drawCameraVideo(g: CanvasRenderingContext2D, video: HTMLVideoElement, width: number, height: number, rotation = 0, zoom = 1) {
   const sideways = Math.abs(rotation) === 90;
   const w = sideways ? height : width, h = sideways ? width : height;
-  const r = Math.max(w / video.videoWidth, h / video.videoHeight);
+  // Digital zoom narrows the centred "fill" crop, so every consumer sees the same framing.
+  const r = Math.max(w / video.videoWidth, h / video.videoHeight) * Math.max(1, zoom);
   const sw = w / r, sh = h / r;
   if (rotation) {
     g.save();
@@ -30,7 +33,7 @@ export function drawCameraVideo(g: CanvasRenderingContext2D, video: HTMLVideoEle
 }
 
 /** Freeze the live raw crop/orientation for recognition without its grid. */
-export function freezeCameraFrame(target: HTMLCanvasElement, video: HTMLVideoElement, rotation: number): HTMLCanvasElement | null {
+export function freezeCameraFrame(target: HTMLCanvasElement, video: HTMLVideoElement, rotation: number, zoom = 1): HTMLCanvasElement | null {
   if (!video.videoWidth || !video.videoHeight) return null;
   const frame = document.createElement("canvas");
   const scale = Math.min(1, 1536 / Math.max(target.width, target.height));
@@ -39,7 +42,7 @@ export function freezeCameraFrame(target: HTMLCanvasElement, video: HTMLVideoEle
   const context = frame.getContext("2d");
   const preview = target.getContext("2d");
   if (!context || !preview) return null;
-  drawCameraVideo(context, video, frame.width, frame.height, rotation);
+  drawCameraVideo(context, video, frame.width, frame.height, rotation, zoom);
   preview.drawImage(frame, 0, 0, target.width, target.height);
   return frame;
 }
@@ -61,7 +64,7 @@ export function paintArFrame(canvas: HTMLCanvasElement, source: ArFrameSource, s
   }
   const g = canvas.getContext("2d");
   if (!g) return false;
-  drawCameraVideo(g, video, cw, ch, source.rotation);
+  drawCameraVideo(g, video, cw, ch, source.rotation, source.zoom);
   heat?.(g, cw, ch);
   if (scene) {
     // La griglia segue l'inclinazione del telefono, ma solo dove viene mostrata a schermo.
