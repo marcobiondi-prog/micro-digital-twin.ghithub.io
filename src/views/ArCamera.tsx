@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import { Activity, ChevronDown, ChevronUp, Flame, Info, Grid2X2, Minus, Plus, ScanSearch, SlidersHorizontal, Square, Trash2, Undo2, X, Zap, ZapOff } from "lucide-react";
 import { supportsCameraTorch, setCameraTorch } from "@/lib/camera-torch";
@@ -636,6 +636,28 @@ export function ArCamera({
   // Each change of specimens flashes its own step (e.g. "−0,4 °C") next to the before → after readout.
   const [stepFlash, setStepFlash] = useState<{ key: number; delta: number } | null>(null);
   const [balanceMin, setBalanceMin] = useState(false);
+  // Room between the thermal summary and the bottom HUD (balance, zoom, capture), so the expanded summary
+  // stops above the balance in portrait and scrolls the rest. Measured on screen; only portrait CSS uses it.
+  const hudObserver = useRef<{ el: Element; ro: ResizeObserver } | null>(null);
+  useLayoutEffect(() => {
+    const surface = surfaceRef.current?.querySelector<HTMLElement>(".ar-camera-surface");
+    const hud = surface?.querySelector<HTMLElement>(".camera-bottom");
+    if (!surface || !hud) return;
+    const measure = () => {
+      const summary = surface.querySelector(".ar-thermal-summary");
+      if (!summary) return;
+      const room = Math.max(96, Math.round(hud.getBoundingClientRect().top - summary.getBoundingClientRect().top - 12));
+      if (surface.style.getPropertyValue("--ar-summary-room") !== `${room}px`) surface.style.setProperty("--ar-summary-room", `${room}px`);
+    };
+    measure();
+    if (hudObserver.current?.el !== hud && typeof ResizeObserver !== "undefined") {
+      hudObserver.current?.ro.disconnect();
+      const ro = new ResizeObserver(measure);
+      ro.observe(hud);
+      hudObserver.current = { el: hud, ro };
+    }
+  });
+  useEffect(() => () => hudObserver.current?.ro.disconnect(), []);
   const lastCooling = useRef(coolingNow);
   useEffect(() => {
     const step = Math.round((coolingNow - lastCooling.current) * 10) / 10;

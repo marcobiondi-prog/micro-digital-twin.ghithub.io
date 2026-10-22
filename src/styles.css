@@ -1830,6 +1830,13 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
   .ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
 }
 
+/* Smartphone portrait: the expanded summary stops above the bottom HUD (balance, zoom, capture) and scrolls,
+   and the balance lines up with the summary's left edge. */
+@media (max-width: 599px), (max-height: 599px) {
+  .ar-camera-surface:not([data-landscape=true]) .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: var(--ar-summary-room, calc(100dvh - 20rem)); }
+  .ar-camera-surface:not([data-landscape=true]) .ar-specimen-dock { align-self: flex-start; }
+}
+
 /* Accordion for the specimen balance: smartphones only; on tablets the toggle is hidden and the balance always open. */
 .ar-dock-toggle { display: none; }
 @media (max-width: 599px), (max-height: 599px) {
