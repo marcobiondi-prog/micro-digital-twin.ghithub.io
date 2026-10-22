@@ -84,6 +84,7 @@ export const getAdminOverview = createServerFn({ method: "GET" })
         ai: Boolean(process.env["GEMINI_API_KEY"] || process.env["OPENAI_API_KEY"]),
         googleMaps: Boolean(process.env["GOOGLE_MAPS_API_KEY"]),
         parallel: Boolean(process.env["PARALLEL_API_KEY"]),
+        copernicus: Boolean(process.env["CDSE_CLIENT_ID"] && process.env["CDSE_CLIENT_SECRET"]),
         cron: Boolean(process.env["CRON_SECRET"]),
       },
     };
