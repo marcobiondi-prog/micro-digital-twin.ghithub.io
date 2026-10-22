@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
-import { Activity, ChevronDown, ChevronUp, Flame, Info, Grid2X2, Minus, Plus, ScanSearch, SlidersHorizontal, Square, Trash2, Undo2, X, Zap, ZapOff } from "lucide-react";
+import { Activity, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Flame, Info, Grid2X2, Minus, Plus, ScanSearch, SlidersHorizontal, Square, Trash2, Undo2, X, Zap, ZapOff } from "lucide-react";
 import { supportsCameraTorch, setCameraTorch } from "@/lib/camera-torch";
 import { detectArObject, type Detection, type Soil } from "@/controllers/ar-detect.functions";
 import { findSubject, SEARCH_BOX, smoothBox, type SubjectBox } from "@/lib/ar-subject-tracker";
 import { extractPlantPhoto } from "@/views/ar-plant-photo";
 
 type D = NonNullable<Detection>;
+const BIN_EMPTY_MS = 1100;
 type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identification: D["identification"] };
 /** One camera section's scan, set aside while another section is open. */
 type TabResult = {
@@ -35,7 +36,7 @@ import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models
 import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
-import { clearScans, recordScan, updateScan, useArScans } from "@/models/ar-scan-log";
+import { clearScans, recordScan, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
 import { cameraOwnsFullscreen, enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
@@ -683,12 +684,25 @@ export function ArCamera({
   const scanRecords = useArScans(kind);
   // The confirm lives inside the camera surface (not window.confirm), so it turns with the camera in landscape.
   const [confirmClear, setConfirmClear] = useState(false);
+  // While the records are being deleted the big bin empties (files fly out, lid opens), then the confirm closes.
+  const [emptying, setEmptying] = useState(false);
   const clearEverything = () => {
-    setConfirmClear(false);
+    setConfirmClear(false); setEmptying(false);
     clearScans(kind);
     tabMemory.current.clear();
     resetResults();
   };
+  const confirmDelete = () => {
+    if (emptying) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { clearEverything(); return; }
+    setEmptying(true);
+    window.setTimeout(clearEverything, BIN_EMPTY_MS);
+  };
+  // Summary pager over this flow's recorded scans, swiped like the tutorial; the scan badge follows it.
+  // Pages are the records, plus the scan on screen when it is not recorded (e.g. a failed scan's message).
+  const [browse, setBrowse] = useState<number | null>(null);
+  const summarySwipe = useRef<{ id: number; x: number; y: number; rotation: number } | null>(null);
+  useEffect(() => { setBrowse(null); }, [scanRecords.length, target]);
   const removeAll = () => { if (scanRecords.length) setConfirmClear(true); else clearEverything(); };
   const thermalEstimate = scannedSpecimenThermal(count, species?.cooling ?? null);
   const coolingNow = thermalEstimate.deltaT;
@@ -809,24 +823,76 @@ export function ArCamera({
       {(species.colUrl || species.gbifUrl) && <span className="block">Tassonomia: {[species.colUrl ? "Catalogue of Life" : null, species.gbifUrl ? "GBIF" : null].filter(Boolean).join(" · ")}</span>}
     </p>
   ) : null;
-  const thermalSummary = !scanning && (found || survey || species || count > 0) && (
+  const hasLive = Boolean(found || survey || species || count > 0);
+  const liveRecord = scanRecordId.current ? scanRecords.findIndex((r) => r.id === scanRecordId.current) : -1;
+  const livePage = liveRecord >= 0 ? liveRecord : hasLive ? scanRecords.length : -1;
+  const pageCount = scanRecords.length + (hasLive && liveRecord < 0 ? 1 : 0);
+  const viewPage = Math.min(pageCount - 1, browse ?? (livePage >= 0 ? livePage : scanRecords.length - 1));
+  const viewedRecord = viewPage !== livePage ? scanRecords[viewPage] ?? null : null;
+  const goToPage = (page: number) => setBrowse(Math.max(0, Math.min(pageCount - 1, page)));
+  const summarySwipeProps = {
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (!event.isPrimary || event.pointerType === "mouse" || pageCount < 2 || (event.target instanceof Element && event.target.closest("button"))) return;
+      summarySwipe.current = { id: event.pointerId, x: event.clientX, y: event.clientY, rotation: rotationRef.current };
+    },
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
+      const start = summarySwipe.current;
+      summarySwipe.current = null;
+      if (!start || start.id !== event.pointerId) return;
+      const next = tutorialSwipeStep(viewPage, pageCount, event.clientX - start.x, event.clientY - start.y, start.rotation);
+      if (next !== viewPage) goToPage(next);
+    },
+    onPointerCancel: () => { summarySwipe.current = null; },
+  };
+  const summaryPager = pageCount > 1 && (
+    <div className="ar-summary-pager">
+      <button type="button" aria-label="Scansione precedente" disabled={viewPage <= 0} onClick={() => goToPage(viewPage - 1)}><ChevronLeft className="size-3.5" /></button>
+      <span>Scansione {viewPage + 1} di {pageCount} · scorri per le altre</span>
+      <button type="button" aria-label="Scansione successiva" disabled={viewPage >= pageCount - 1} onClick={() => goToPage(viewPage + 1)}><ChevronRight className="size-3.5" /></button>
+    </div>
+  );
+  const minimizeSummary = <Button type="button" variant="ghost" size="icon" onClick={() => setThermalMin(true)}
+    aria-label="Minimizza stima termica" title="Minimizza stima termica"
+    className="ml-auto grid size-7 shrink-0 place-items-center rounded-full"><ChevronDown className="size-3.5" /></Button>;
+  const recordView = (r: ScanRecord) => (
+    <>
+      <div className="ar-thermal-heading">
+        <span className="ar-thermal-info-btn" aria-hidden="true"><Flame className="size-4 shrink-0" /></span>
+        <span>{r.target}{r.species ? ` · ${r.species.commonName}` : r.soil ? ` · ${r.soil.label}` : ""}{r.count > 0 ? ` · ×${r.count}` : ""}</span>
+        {minimizeSummary}
+      </div>
+      {r.species && <dl className="ar-thermal-values">
+        <div><dt>Specie</dt><dd>{r.species.commonName}<span className="block text-xs italic text-muted-foreground">{r.species.scientificName}{r.species.family ? ` · ${r.species.family}` : ""}</span></dd></div>
+        <div><dt>Per esemplare</dt><dd>{r.species.cooling !== null ? coolingLabel(r.species.cooling) : "n.d."}</dd></div>
+        <div><dt>Ombreggiatura</dt><dd>{r.species.shade !== null ? `≈ ${Math.round(r.species.shade)} m²` : "n.d."}</dd></div>
+      </dl>}
+      {r.species && <p className="ar-identification-badge">{r.species.level}</p>}
+      {r.count > 0 && r.totalCooling !== null && <dl className="ar-thermal-values">
+        <div><dt>Riduzione temperatura</dt><dd>{coolingLabel(r.totalCooling)}</dd></div>
+        <div><dt>Ombra teorica</dt><dd>≈ {Math.round(r.totalShade ?? 0)} m²</dd></div>
+      </dl>}
+      {r.soil && <p className="ar-thermal-exposure">Suolo {r.soil.label} · permeabilità {r.soil.permeability} · {r.soil.plantable ? "piantabile" : "non piantabile"}{r.soil.note ? ` · ${r.soil.note}` : ""}</p>}
+      {!r.species && !r.soil && <p className="ar-thermal-note">{r.result}</p>}
+      {r.satellite && <p className="ar-thermal-note">{r.satellite} · dati dell’area, non della foto</p>}
+      <p className="ar-thermal-note">Scansione registrata · {new Date(r.at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}{r.context ? ` · ${r.context}` : ""}</p>
+    </>
+  );
+  const thermalSummary = !scanning && (hasLive || scanRecords.length > 0) && (
     thermalMin ? (
       <Button type="button" variant="ghost" data-camera-controls className="ar-thermal-summary ar-thermal-summary-min"
         onClick={() => setThermalMin(false)} aria-label="Espandi stima termica" title="Espandi stima termica">
         <Flame className="size-4 shrink-0" /><span>{summaryText.title}{species ? ` · ${species.commonName}` : ` · ${summaryText.empty.toLowerCase()}`}{count > 0 && species?.cooling ? ` · ${coolingLabel(coolingNow)}` : ""}</span><ChevronUp className="size-3.5" />
       </Button>
     ) : (
-    <section className="ar-thermal-summary" data-camera-controls aria-label="Risultati termici della scansione" aria-live="polite">
+    <section className={`ar-thermal-summary ${Math.abs(viewport.rotation) === 90 ? "touch-pan-x" : "touch-pan-y"}`} data-camera-controls aria-label="Risultati termici della scansione" aria-live="polite" {...summarySwipeProps}>
+      <div className="ar-summary-slide" key={viewPage}>
+      {viewedRecord ? recordView(viewedRecord) : <>
       <div className="ar-thermal-heading">
         <button type="button" className="ar-thermal-info-btn" onClick={() => setThermalInfoOpen(true)}
           aria-label="Come leggere la stima termica" title="Come leggere la stima termica">
           <Flame className="size-4 shrink-0" />
         </button><span>{summaryText.title}{species ? ` · ${species.commonName}` : ""}{count > 0 ? ` · ×${count}` : ""}</span>
-        <Button type="button" variant="ghost" size="icon" onClick={() => setThermalMin(true)}
-          aria-label="Minimizza stima termica" title="Minimizza stima termica"
-          className="ml-auto grid size-7 shrink-0 place-items-center rounded-full">
-          <ChevronDown className="size-3.5" />
-        </Button>
+        {minimizeSummary}
       </div>
       {species && <dl className="ar-thermal-values">
         <div><dt>Specie</dt><dd>{species.commonName}<span className="block text-xs italic text-muted-foreground">{species.scientificName}{species.family ? ` · ${species.family}` : ""}</span></dd></div>
@@ -843,6 +909,9 @@ export function ArCamera({
       {survey && <p className="ar-thermal-exposure">{survey.heatNote}</p>}
       {satelliteText && <p className="ar-thermal-note">{satelliteText} · dati dell’area, non della foto</p>}
       <p className="ar-thermal-note">{summaryText.note}</p>
+      </>}
+      </div>
+      {summaryPager}
     </section>
     )
   );
@@ -997,14 +1066,15 @@ export function ArCamera({
               {scanning && <span className="ar-viewfinder-scan"><span className="ar-viewfinder-sweep" /></span>}
             </div>}
             {guideOpen && <div className="ar-tutorial-veil" data-camera-controls aria-hidden="true" />}
-            {confirmClear && <div className="ar-confirm-veil" data-camera-controls onClick={() => setConfirmClear(false)}>
+            {confirmClear && <div className="ar-confirm-veil" data-camera-controls onClick={() => { if (!emptying) setConfirmClear(false); }}>
               <div className="ar-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ar-confirm-title" aria-describedby="ar-confirm-text"
                 onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") setConfirmClear(false); }}>
                 <p id="ar-confirm-title" className="ar-confirm-title"><Trash2 className="size-4" aria-hidden="true" />Eliminare tutto?</p>
                 <p id="ar-confirm-text" className="ar-confirm-text">Gli esemplari e {scanRecords.length === 1 ? "la scansione registrata" : `tutte le ${scanRecords.length} scansioni registrate`} nel report {kind === "urban" ? "urbano" : "vitivinicolo"} verranno eliminati.</p>
                 <div className="ar-confirm-actions">
-                  <Button type="button" variant="ghost" className="camera-tool" autoFocus onClick={() => setConfirmClear(false)}>Annulla</Button>
-                  <Button type="button" variant="ghost" className="camera-tool ar-confirm-delete" onClick={clearEverything}>Elimina</Button>
+                  <TrashBin emptying={emptying} />
+                  <Button type="button" variant="ghost" className="camera-tool" autoFocus disabled={emptying} onClick={() => setConfirmClear(false)}>Annulla</Button>
+                  <Button type="button" variant="ghost" className="camera-tool ar-confirm-delete" disabled={emptying} onClick={confirmDelete}>{emptying ? "Eliminazione…" : "Elimina"}</Button>
                 </div>
               </div>
             </div>}
@@ -1080,7 +1150,11 @@ export function ArCamera({
               <div className="ar-camera-actions flex shrink-0 gap-1" data-camera-controls>
                 <div className="ar-focus-wrap">
                 {/* Scans recorded for this flow's report: a badge on the first section pill, taking no row width. */}
-                <span className="ar-scan-counter" role="status" aria-label={`${scanRecords.length} ${scanRecords.length === 1 ? "scansione registrata" : "scansioni registrate"} nel report`} title="Scansioni registrate nel report">{scanRecords.length}</span>
+                {(() => {
+                  // Follows the summary pager: "2/5" is the scan on view, the bare total when there is one or none.
+                  const onRecord = scanRecords.length > 1 && viewPage >= 0 && viewPage < scanRecords.length;
+                  return <span className="ar-scan-counter" role="status" aria-label={onRecord ? `Scansione ${viewPage + 1} di ${scanRecords.length}` : `${scanRecords.length} ${scanRecords.length === 1 ? "scansione registrata" : "scansioni registrate"} nel report`} title="Scansioni registrate nel report">{onRecord ? `${viewPage + 1}/${scanRecords.length}` : scanRecords.length}</span>;
+                })()}
                 <div className="ar-focus-options" role="radiogroup" aria-label={kind === "urban" ? "Obiettivo camera urbana" : "Obiettivo camera vitivinicola"}>
                   {/* Switching section stops any running scan and clears the previous result. */}
                   {AR_FOCUS[kind].map(o => <Button variant="ghost" size="sm" key={o.id} type="button" role="radio" aria-label={o.label} title={o.label} aria-checked={arFocusOption(kind, target).id === o.id} className="camera-tool ar-focus-pill" onClick={() => selectTarget(o.id)}>{FOCUS_LABELS[o.id]}</Button>)}
@@ -1342,3 +1416,22 @@ function cropRealPhoto(frame: HTMLCanvasElement, box: { x: number; y: number; w:
   g.drawImage(frame, x * frame.width, y * frame.height, sw, sh, 0, 0, out.width, out.height);
   return out.toDataURL("image/jpeg", 0.85);
 }
+
+/** Big bin beside Annulla; while emptying, the lid lifts and the files fly out until the deletion ends. */
+function TrashBin({ emptying }: { emptying: boolean }) {
+  return (
+    <svg className="ar-confirm-bin" data-emptying={emptying || undefined} viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <g className="ar-bin-files">
+        <rect className="ar-bin-file" x="16.5" y="28" width="6" height="8" rx="1" />
+        <rect className="ar-bin-file" x="21" y="25" width="6" height="8" rx="1" />
+        <rect className="ar-bin-file" x="25.5" y="28" width="6" height="8" rx="1" />
+      </g>
+      <path className="ar-bin-body" d="M12.5 20h23l-2.2 21.2a3 3 0 0 1-3 2.8H17.7a3 3 0 0 1-3-2.8Z" />
+      <g className="ar-bin-lid">
+        <path d="M10 17h28" />
+        <path d="M20 17v-2.5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5V17" />
+      </g>
+    </svg>
+  );
+}
+
