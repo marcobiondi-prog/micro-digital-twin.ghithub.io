@@ -1832,6 +1832,14 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 .ar-dock-toggle { display: none; }
 @media (max-width: 599px), (max-height: 599px) {
   .ar-dock-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: .5rem; min-height: 2rem; padding: .125rem 0; font-size: .72rem; font-weight: 600; color: var(--camera-ink); text-align: left; font-variant-numeric: tabular-nums; }
-  .ar-specimen-dock[data-collapsed] .ar-dock-body { display: none; }
-  .ar-specimen-dock[data-collapsed] { padding-bottom: .375rem; }
+  /* The dock keeps its footprint, so the header never moves: collapsing clips it to the header row and
+     opening reveals the body from top to bottom. The clipped part is transparent and takes no touches. */
+  .ar-specimen-dock { clip-path: inset(0 0 0 0 round 8px); transition: clip-path .28s cubic-bezier(.2, .8, .2, 1); }
+  .ar-specimen-dock[data-collapsed] { clip-path: inset(0 0 calc(100% - 2.75rem) 0 round 8px); }
+  .ar-specimen-dock { position: relative; }
+  .ar-specimen-dock::after { content: ""; position: absolute; inset: calc(2.75rem - 1px) 0 auto; height: 1px; border-radius: 0 0 8px 8px; background: var(--camera-border); opacity: 0; transition: opacity .15s ease; pointer-events: none; }
+  .ar-specimen-dock[data-collapsed]::after { opacity: 1; }
+  .ar-dock-body { transition: opacity .2s ease; }
+  .ar-specimen-dock[data-collapsed] .ar-dock-body { opacity: 0; visibility: hidden; transition: opacity .15s ease, visibility 0s .28s; }
 }
+@media (prefers-reduced-motion: reduce) { .ar-specimen-dock, .ar-dock-body, .ar-specimen-dock[data-collapsed] .ar-dock-body { transition: none; } }

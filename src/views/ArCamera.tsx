@@ -680,12 +680,13 @@ export function ArCamera({
   };
   const specimenDock = !scanning && species?.cooling && (
     <div className="ar-specimen-dock" data-camera-controls data-collapsed={balanceMin || undefined} aria-label="Esemplari e raffrescamento stimato">
-      {/* Smartphones only (CSS hides it on tablets): fold the balance like an accordion, keeping a one-line summary. */}
+      {/* Smartphones only (CSS hides it on tablets): fold the balance like an accordion, keeping a one-line summary;
+          the header stays put and the body unfolds from top to bottom. */}
       <button type="button" className="ar-dock-toggle" aria-expanded={!balanceMin} aria-controls="ar-balance-body" onClick={() => setBalanceMin((v) => !v)}>
         <span>Bilancia termica{balanceMin ? ` · ${count} esemplari · ${readout.after !== null ? `${fmtC(readout.after)} °C` : `≈ −${fmtC(readout.delta)} °C`}` : ""}</span>
-        {balanceMin ? <ChevronUp className="size-3.5 shrink-0" aria-hidden="true" /> : <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />}
+        {balanceMin ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" /> : <ChevronUp className="size-3.5 shrink-0" aria-hidden="true" />}
       </button>
-      <div id="ar-balance-body" className="ar-dock-body">
+      <div id="ar-balance-body" className="ar-dock-body" inert={balanceMin || undefined}>
       {greenControls}
       <div className="ar-thermal-balance" data-camera-controls role="slider" tabIndex={0} aria-disabled={!species?.cooling || scanning} onKeyDown={e => { if (["ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "Home", "End"].includes(e.key)) { e.preventDefault(); changeGreen(e.key === "Home" ? 0 : e.key === "End" ? MAX_GREEN : countRef.current + (["ArrowRight","ArrowUp"].includes(e.key) ? 1 : -1)); } }} aria-valuemin={0} aria-valuemax={MAX_GREEN} aria-valuenow={count}
         aria-valuetext={`${count} esemplari, riduzione stimata ${coolingNow.toFixed(1)} gradi`} aria-label="Bilancia termica simulata">
