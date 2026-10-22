@@ -22,6 +22,9 @@ import { tutorialSwipeStep } from "@/lib/ar-tutorial-swipe";
 import { CameraCenterCapture } from "@/views/CameraCenterCapture";
 import { CameraCaptureControl } from "@/views/CameraCaptureControl";
 import { playAiShutter, playCameraSound, preloadAiShutter, startScanLoop } from "@/lib/camera-sounds";
+import { useLab } from "@/models/lab-store";
+import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models/copernicus";
+import { loadCopernicus } from "@/views/copernicus-client";
 import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 
 type Mode = "photo" | "video";
@@ -65,6 +68,17 @@ export function ArCamera({
   onClose: () => void;
   onFallback: (mode: Mode) => void;
 }) {
+  // Copernicus area context (signed-in camera): read once per place, shared with the Lab panel.
+  const lab = useLab();
+  const place = kind === "urban" ? lab.urban.location : lab.vineyard.location;
+  const [satellite, setSatellite] = useState<SatelliteContext | null>(null);
+  useEffect(() => {
+    if (!mode) return;
+    let alive = true;
+    loadCopernicus(place.lat, place.lng).then((r) => { if (alive) setSatellite(r.configured ? satelliteContext(r) : null); }, () => { if (alive) setSatellite(null); });
+    return () => { alive = false; };
+  }, [mode, place.lat, place.lng]);
+  const satelliteText = satelliteLine(satellite);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -496,7 +510,7 @@ export function ArCamera({
       detail.height = Math.max(1, Math.round(h * small.height * scale));
       detail.getContext("2d")?.drawImage(small, x * small.width, y * small.height, w * small.width, h * small.height, 0, 0, detail.width, detail.height);
       const detailImage = detail.toDataURL("image/jpeg", 0.92);
-      const r = await detectArObject({ data: { image, kind, target: arFocusOption(kind, target).id, ...(detailImage.length <= 1_000_000 ? {detailImage} : {}), ...(subjectLocked ? {focus:subject} : {}) } });
+      const r = await detectArObject({ data: { image, kind, target: arFocusOption(kind, target).id, ...(detailImage.length <= 1_000_000 ? {detailImage} : {}), ...(subjectLocked ? {focus:subject} : {}), ...(satellite ? { satellite } : {}) } });
       if (version !== scanVersion.current) return;
       const d = r.detection;
       setSoil(r.soil ?? null);
@@ -664,6 +678,7 @@ export function ArCamera({
       </dl>}
       {thermalEstimate.unknown > 0 && <p className="ar-thermal-note">{thermalEstimate.unknown} senza stima di specie</p>}
       {survey && <p className="ar-thermal-exposure">{survey.heatNote}</p>}
+      {satelliteText && <p className="ar-thermal-note">{satelliteText} · dati dell’area, non della foto</p>}
       <p className="ar-thermal-note">{summaryText.note}</p>
     </section>
     )
@@ -683,7 +698,7 @@ export function ArCamera({
       commonName: species.commonName, scientificName: species.scientificName,
       level: species.identification?.level === "species" ? "Specie probabile" : species.identification?.level === "genus" ? "Genere probabile" : "Identificazione incerta",
       count, cooling: species.cooling ? coolingNow : null, shade: species.cooling ? shadeNow : null,
-    } : null, context ?? (kind === "urban" ? "Sopralluogo urbano" : "Sopralluogo vitivinicolo"));
+    } : null, context ?? (kind === "urban" ? "Sopralluogo urbano" : "Sopralluogo vitivinicolo"), satelliteText);
     const saved = document.createElement("canvas");
     const fontSize = Math.max(14, Math.round(source.width / 38));
     const g = saved.getContext("2d");
