@@ -1865,7 +1865,7 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 .ar-real-photo { display: block; width: 100%; max-height: 10rem; margin: 0 auto .5rem; border-radius: 8px; object-fit: cover; }
 
 /* In-camera confirm (turns with the camera surface in landscape, unlike window.confirm). */
-.ar-confirm-veil { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; background: oklch(0 0 0 / 45%); }
+.ar-confirm-veil { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; background: oklch(0 0 0 / 35%); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .ar-confirm { width: min(20rem, 100%); padding: 1.125rem 1.125rem .875rem; border-radius: 1.25rem; color: var(--camera-ink); background: var(--camera-glass); border: 1px solid var(--camera-border); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 20px 50px -20px oklch(0 0 0 / 70%); animation: ar-tutorial-in 200ms ease-out; }
 .ar-confirm-title { display: flex; align-items: center; gap: .5rem; font-size: .95rem; font-weight: 700; }
 .ar-confirm-text { margin-top: .5rem; font-size: .8125rem; line-height: 1.45; opacity: .85; }
