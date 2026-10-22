@@ -1819,8 +1819,11 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 @keyframes ar-cooling-step { 0% { opacity: 0; transform: translateY(4px); } 15% { opacity: 1; transform: translateY(0); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-4px); } }
 @media (prefers-reduced-motion: reduce) { .ar-cooling-step { animation: none; } }
 .ar-cooling-satellite { margin-top: .2rem; font-size: .64rem; opacity: .7; color: var(--camera-ink); font-variant-numeric: tabular-nums; }
-/* Landscape: the thermal summary owns the left ~40%, so the specimen balance sits on the right, like the tools panel. */
-.ar-camera-surface[data-landscape=true] .ar-specimen-dock { align-self: flex-end; width: min(52%, 22rem); }
-.ar-camera-surface[data-landscape=true] .ar-cooling-readout { margin-top: 1.4rem; }
-/* Landscape: the expanded summary stops above the capture row (Scansiona / shutter) and scrolls the rest. */
-.ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
+/* Smartphone landscape only (short side < 600 px; tablets keep their layout): the thermal summary owns the
+   left ~40%, so the specimen balance sits on the right like the tools panel, and the expanded summary stops
+   above the capture row (Scansiona / shutter) and scrolls the rest. */
+@media (max-width: 599px), (max-height: 599px) {
+  .ar-camera-surface[data-landscape=true] .ar-specimen-dock { align-self: flex-end; width: min(52%, 22rem); }
+  .ar-camera-surface[data-landscape=true] .ar-cooling-readout { margin-top: 1.4rem; }
+  .ar-camera-surface[data-landscape=true] .ar-thermal-summary:not(.ar-thermal-summary-min) { max-height: calc(var(--ar-camera-height) - var(--ar-header-bottom) - env(safe-area-inset-bottom) - 6.5rem); }
+}
