@@ -3,7 +3,9 @@
 
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 5;
-/** Button presets: − / + walk these, the label cycles 1× → 2× → 5×. */
+/** Lens-style chips shown above the shutter (Xperia-like); pinch moves freely between them. */
+export const ZOOM_LENSES = [1, 2, 3, 5] as const;
+/** Fine presets for stepping. */
 export const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 5] as const;
 
 export const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10));

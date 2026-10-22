@@ -23,7 +23,7 @@ import { CameraCenterCapture } from "@/views/CameraCenterCapture";
 import { CameraCaptureControl } from "@/views/CameraCaptureControl";
 import { playAiShutter, playCameraSound, preloadAiShutter, startScanLoop } from "@/lib/camera-sounds";
 import { useLab } from "@/models/lab-store";
-import { createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomLabel, zoomStep, ZOOM_MAX, ZOOM_MIN } from "@/lib/camera-zoom";
+import { createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomLabel, ZOOM_LENSES, ZOOM_MAX, ZOOM_MIN } from "@/lib/camera-zoom";
 import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models/copernicus";
 import { loadCopernicus } from "@/views/copernicus-client";
 import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
@@ -1068,13 +1068,14 @@ export function ArCamera({
               </div>}
               </div>
                {!toolsOpen && specimenDock}
-               {!toolsOpen && <div className="ar-zoom-pill" role="group" aria-label="Zoom della fotocamera" data-camera-controls>
-                <Button type="button" variant="ghost" size="icon" className="camera-tool size-9" aria-label="Riduci zoom" title="Riduci zoom"
-                  disabled={!ready || scanning || zoom <= ZOOM_MIN} onClick={() => setZoom(zoomStep(zoom, -1))}><Minus className="size-4" /></Button>
-                <button type="button" className="ar-zoom-value" aria-label={`Zoom ${zoomLabel(zoom)}: tocca per 1×, 2× o 5×`} title="Zoom rapido 1× · 2× · 5×"
-                  disabled={!ready || scanning} onClick={() => setZoom(zoom < 2 ? 2 : zoom < 5 ? 5 : 1)}>{zoomLabel(zoom)}</button>
-                <Button type="button" variant="ghost" size="icon" className="camera-tool size-9" aria-label="Aumenta zoom" title="Aumenta zoom"
-                  disabled={!ready || scanning || zoom >= ZOOM_MAX} onClick={() => setZoom(zoomStep(zoom, 1))}><Plus className="size-4" /></Button>
+               {!toolsOpen && <div className="ar-zoom-lenses" role="group" aria-label="Zoom della fotocamera" data-camera-controls>
+                {ZOOM_LENSES.map((lens, i) => {
+                  // Like a lens dial: the chip in use shows the live value (pinch included), the others their preset.
+                  const active = zoom >= lens - 0.05 && (i === ZOOM_LENSES.length - 1 || zoom < ZOOM_LENSES[i + 1]! - 0.05);
+                  return <button key={lens} type="button" className="ar-zoom-lens" data-active={active || undefined}
+                    aria-pressed={active} aria-label={`Zoom ${zoomLabel(lens)}`} disabled={!ready || scanning}
+                    onClick={() => setZoom(lens)}>{active ? zoomLabel(zoom) : lens}</button>;
+                })}
               </div>}
                <CameraCaptureControl mode={mode ?? "photo"} recording={recording} ar disabled={!ready || scanning || xrActive} onCapture={mode === "photo" ? shoot : record} left={<div className="camera-labelled-tool ar-scan-tools">
                 <Button variant="ghost" size="icon"
