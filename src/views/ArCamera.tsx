@@ -1004,7 +1004,7 @@ export function ArCamera({
               {scanning && <span className="ar-viewfinder-scan"><span className="ar-viewfinder-sweep" /></span>}
             </div>}
             {guideOpen && <div className="ar-tutorial-veil" data-camera-controls aria-hidden="true" />}
-            {fullscreenHint && <p className="ar-fullscreen-hint" role="status">Schermo intero · Indietro per uscire</p>}
+            {fullscreenHint && <p className="ar-fullscreen-hint" role="status">Schermo intero · Indietro o swipe dal basso verso l’alto per uscire</p>}
             {confirmClear && <div className="ar-confirm-veil" data-camera-controls onClick={() => setConfirmClear(false)}>
               <div className="ar-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ar-confirm-title" aria-describedby="ar-confirm-text"
                 onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") setConfirmClear(false); }}>

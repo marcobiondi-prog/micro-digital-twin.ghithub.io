@@ -16,6 +16,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as FontiRouteImport } from './routes/fonti'
 import { Route as LabRouteImport } from './routes/lab'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as ZzHarnessRouteImport } from './routes/zz-harness'
 import { Route as ApiPublicExternalApprovalRouteImport } from './routes/api/public/external-approval'
 import { Route as ApiPublicJobsCaseSourcesRouteImport } from './routes/api/public/jobs/case-sources'
 
@@ -54,6 +55,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ZzHarnessRoute = ZzHarnessRouteImport.update({
+  id: '/zz-harness',
+  path: '/zz-harness',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicExternalApprovalRoute =
   ApiPublicExternalApprovalRouteImport.update({
     id: '/api/public/external-approval',
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/fonti': typeof FontiRoute
   '/lab': typeof LabRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/zz-harness': typeof ZzHarnessRoute
   '/api/public/external-approval': typeof ApiPublicExternalApprovalRoute
   '/api/public/jobs/case-sources': typeof ApiPublicJobsCaseSourcesRoute
 }
@@ -86,6 +93,7 @@ export interface FileRoutesByTo {
   '/fonti': typeof FontiRoute
   '/lab': typeof LabRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/zz-harness': typeof ZzHarnessRoute
   '/api/public/external-approval': typeof ApiPublicExternalApprovalRoute
   '/api/public/jobs/case-sources': typeof ApiPublicJobsCaseSourcesRoute
 }
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/fonti': typeof FontiRoute
   '/lab': typeof LabRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/zz-harness': typeof ZzHarnessRoute
   '/api/public/external-approval': typeof ApiPublicExternalApprovalRoute
   '/api/public/jobs/case-sources': typeof ApiPublicJobsCaseSourcesRoute
 }
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/fonti'
     | '/lab'
     | '/reset-password'
+    | '/zz-harness'
     | '/api/public/external-approval'
     | '/api/public/jobs/case-sources'
   fileRoutesByTo: FileRoutesByTo
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/fonti'
     | '/lab'
     | '/reset-password'
+    | '/zz-harness'
     | '/api/public/external-approval'
     | '/api/public/jobs/case-sources'
   id:
@@ -133,6 +144,7 @@ export interface FileRouteTypes {
     | '/fonti'
     | '/lab'
     | '/reset-password'
+    | '/zz-harness'
     | '/api/public/external-approval'
     | '/api/public/jobs/case-sources'
   fileRoutesById: FileRoutesById
@@ -145,6 +157,7 @@ export interface RootRouteChildren {
   FontiRoute: typeof FontiRoute
   LabRoute: typeof LabRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  ZzHarnessRoute: typeof ZzHarnessRoute
   ApiPublicExternalApprovalRoute: typeof ApiPublicExternalApprovalRoute
   ApiPublicJobsCaseSourcesRoute: typeof ApiPublicJobsCaseSourcesRoute
 }
@@ -200,6 +213,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/zz-harness': {
+      id: '/zz-harness'
+      path: '/zz-harness'
+      fullPath: '/zz-harness'
+      preLoaderRoute: typeof ZzHarnessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/external-approval': {
       id: '/api/public/external-approval'
       path: '/api/public/external-approval'
@@ -225,6 +245,7 @@ const rootRouteChildren: RootRouteChildren = {
   FontiRoute: FontiRoute,
   LabRoute: LabRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  ZzHarnessRoute: ZzHarnessRoute,
   ApiPublicExternalApprovalRoute: ApiPublicExternalApprovalRoute,
   ApiPublicJobsCaseSourcesRoute: ApiPublicJobsCaseSourcesRoute,
 }
