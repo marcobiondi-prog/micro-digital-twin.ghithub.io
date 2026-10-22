@@ -27,7 +27,8 @@ import { createTrackZoomer, pinchZoom, splitZoom, trackZoomRange, zoomHaptic, zo
 import { hapticTick } from "@/lib/haptics";
 import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models/copernicus";
 import { loadCopernicus } from "@/views/copernicus-client";
-import { scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
+import { coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
+import { loadAirTemperature } from "@/views/air-temp-client";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -81,6 +82,15 @@ export function ArCamera({
     return () => { alive = false; };
   }, [mode, place.lat, place.lng]);
   const satelliteText = satelliteLine(satellite);
+  // Base air temperature for the balance readout: the Lab's imported weather, else the place's current Open-Meteo value.
+  const [airTemp, setAirTemp] = useState<number | null>(null);
+  useEffect(() => {
+    if (!mode) return;
+    let alive = true;
+    loadAirTemperature(place.lat, place.lng).then((t) => { if (alive) setAirTemp(t); });
+    return () => { alive = false; };
+  }, [mode, place.lat, place.lng]);
+  const baseTemp = (kind === "urban" ? lab.urban.realTemp : null) ?? airTemp;
   // Zoom: pinch on the preview or − / + buttons; hardware where the camera allows it, the rest digital.
   const [zoom, setZoomState] = useState(1);
   const zoomRef = useRef(1);
@@ -622,6 +632,19 @@ export function ArCamera({
   const coolingNow = thermalEstimate.deltaT;
   const shadeNow = thermalEstimate.shadeM2;
   const MAX_GREEN = MAX_SCANNED_SPECIMENS;
+  const readout = coolingReadout(baseTemp, coolingNow);
+  // Each change of specimens flashes its own step (e.g. "−0,4 °C") next to the before → after readout.
+  const [stepFlash, setStepFlash] = useState<{ key: number; delta: number } | null>(null);
+  const lastCooling = useRef(coolingNow);
+  useEffect(() => {
+    const step = Math.round((coolingNow - lastCooling.current) * 10) / 10;
+    lastCooling.current = coolingNow;
+    if (!step) return;
+    setStepFlash({ key: Date.now(), delta: step });
+    const timer = window.setTimeout(() => setStepFlash(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [coolingNow]);
+  const fmtC = (v: number) => v.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   // Ogni esemplare in più mostra subito i gradi numerici accanto al conteggio.
   const countDegrees = species?.cooling ? ` · ≈ −${coolingNow.toFixed(1)} °C` : "";
   const greenControls = !scanning && (
@@ -665,6 +688,15 @@ export function ArCamera({
           {species?.cooling && <span className="ar-thermal-balance-value" style={{ left: `clamp(2.5rem, ${(count / MAX_GREEN) * 100}%, calc(100% - 2.5rem))` }} aria-live="polite">≈ −{coolingNow.toFixed(1)} °C</span>}
         </span>
       </div>
+      {/* Estimated perceived temperature: the place's air temperature before and after the cooling of the counted specimens. */}
+      <p className="ar-cooling-readout" aria-live="polite">
+        {readout.before !== null && readout.after !== null
+          ? <><span>Percepita stimata</span><span className="ar-cooling-temps">{fmtC(readout.before)} °C <span aria-hidden="true">→</span><span className="sr-only"> diventa </span> <strong>{fmtC(readout.after)} °C</strong></span></>
+          : <><span>Raffrescamento stimato</span><strong>≈ −{fmtC(readout.delta)} °C</strong></>}
+        {stepFlash && <span key={stepFlash.key} className="ar-cooling-step" data-up={stepFlash.delta < 0 || undefined}>{stepFlash.delta > 0 ? "−" : "+"}{fmtC(Math.abs(stepFlash.delta))} °C</span>}
+      </p>
+      {/* Copernicus stays alongside: the satellite surface temperature of the area, as a reference. */}
+      {satellite?.surfaceTemp !== undefined && <p className="ar-cooling-satellite">Superficie dell’area (Sentinel-3) · {fmtC(satellite.surfaceTemp)} °C</p>}
     </div>
   );
   const identificationBadge = species?.identification ? (

@@ -33,3 +33,9 @@ export function scannedSpecimenCount(requested: number) {
 export function scannedSpecimenThermal(count: number, cooling: PlacementCooling) {
   return placementThermal(Array.from({ length: scannedSpecimenCount(count) }, () => cooling));
 }
+
+/** "Before → after" for the balance: base air temperature (when known) minus the estimated cooling. */
+export function coolingReadout(baseTemp: number | null, deltaT: number) {
+  const round = (v: number) => Math.round(v * 10) / 10;
+  return { before: baseTemp === null ? null : round(baseTemp), after: baseTemp === null ? null : round(baseTemp - deltaT), delta: round(deltaT) };
+}

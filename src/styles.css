@@ -1650,7 +1650,7 @@ html[data-touch] .lab-media-ai { display: inline-flex; }
 .ar-scan-label { max-width: calc(100% - 2rem); white-space: normal; text-align: center; }
 .ar-scan-label small { display: block; margin-top: .25rem; color: var(--camera-muted); font-variant-numeric: tabular-nums; }
 .ar-identification-badge { margin-top: .5rem; padding-left: .5rem; border-left: 2px solid var(--ar-outline); color: var(--camera-muted); font-size: .6875rem; line-height: 1.4; }
-.ar-specimen-dock { width: min(100%, 22rem); padding: .375rem .875rem 1.75rem; border: 1px solid var(--camera-border); border-radius: 8px; background: var(--camera-glass); color: var(--camera-ink); backdrop-filter: blur(12px); }
+.ar-specimen-dock { width: min(100%, 22rem); padding: .375rem .875rem .625rem; border: 1px solid var(--camera-border); border-radius: 8px; background: var(--camera-glass); color: var(--camera-ink); backdrop-filter: blur(12px); }
 .ar-specimen-dock .ar-green-controls { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: .375rem; margin: 0; }
 .ar-specimen-dock .camera-tool { width: 44px; height: 44px; }
 .ar-specimen-dock .ar-green-count { min-width: 0; white-space: normal; font-size: .75rem; line-height: 1.35; }
@@ -1809,3 +1809,13 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 .ar-zoom-lens[data-active] { width: 2.5rem; height: 2.5rem; background: oklch(0.98 0 0 / 92%); color: oklch(0.16 0.008 255); font-size: .75rem; font-weight: 700; }
 .ar-zoom-lens:disabled { opacity: .45; }
 @media (prefers-reduced-motion: reduce) { .ar-zoom-lens { transition: none; } }
+
+/* AI camera balance: before → after perceived temperature, with a short flash of each step's change. */
+.ar-cooling-readout { position: relative; display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; margin-top: 1.6rem; font-size: .72rem; color: var(--camera-ink); font-variant-numeric: tabular-nums; }
+.ar-cooling-readout > span:first-child { opacity: .75; }
+.ar-cooling-temps strong, .ar-cooling-readout > strong { font-size: .85rem; color: var(--radar-cool); }
+.ar-cooling-step { position: absolute; right: 0; top: -1.15rem; padding: 0 .4rem; border-radius: 999px; background: var(--radar-cool); color: oklch(0.16 0.008 255); font-size: .68rem; font-weight: 700; animation: ar-cooling-step 1.4s ease-out forwards; }
+.ar-cooling-step[data-up] { background: var(--radar-warm); }
+@keyframes ar-cooling-step { 0% { opacity: 0; transform: translateY(4px); } 15% { opacity: 1; transform: translateY(0); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .ar-cooling-step { animation: none; } }
+.ar-cooling-satellite { margin-top: .2rem; font-size: .64rem; opacity: .7; color: var(--camera-ink); font-variant-numeric: tabular-nums; }
