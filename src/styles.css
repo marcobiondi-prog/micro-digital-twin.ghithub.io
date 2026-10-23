@@ -1866,12 +1866,16 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 
 /* In-camera confirm (turns with the camera surface in landscape, unlike window.confirm). */
 .ar-confirm-veil { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; background: oklch(0 0 0 / 35%); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-.ar-confirm { width: min(20rem, 100%); padding: 1.125rem 1.125rem .875rem; border-radius: 1.25rem; color: var(--camera-ink); background: var(--camera-glass); border: 1px solid var(--camera-border); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 20px 50px -20px oklch(0 0 0 / 70%); animation: ar-tutorial-in 200ms ease-out; }
+.ar-confirm { width: min(20rem, 100%); padding: 1.125rem 1.125rem .875rem; border-radius: 1.25rem; color: var(--camera-ink); background: var(--camera-glass); border: 1px solid var(--camera-border); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 20px 50px -20px oklch(0 0 0 / 70%); animation: ar-confirm-in 160ms ease-out; }
+/* The veil already centres the confirm: fade only, no translate (the tutorial's keyframes offset by -50%). */
+.ar-confirm-veil { animation: ar-confirm-veil-in 160ms ease-out; }
+@keyframes ar-confirm-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes ar-confirm-veil-in { from { opacity: 0; } to { opacity: 1; } }
 .ar-confirm-title { display: flex; align-items: center; gap: .5rem; font-size: .95rem; font-weight: 700; }
 .ar-confirm-text { margin-top: .5rem; font-size: .8125rem; line-height: 1.45; opacity: .85; }
 .ar-confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
 .ar-pill-hud .ar-confirm .camera-tool.ar-confirm-delete, .ar-confirm .camera-tool.ar-confirm-delete { background: color-mix(in oklab, var(--destructive) 85%, transparent); color: oklch(0.98 0 0); border-color: transparent; }
-@media (prefers-reduced-motion: reduce) { .ar-confirm { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ar-confirm, .ar-confirm-veil { animation: none; } }
 
 /* Big bin in the delete confirm: empties (lid up, files out) for the time the deletion takes. */
 .ar-confirm-actions { align-items: center; }
