@@ -56,7 +56,7 @@ import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
 import { clearScans, recordScan, scanClip, scanPhoto, setScanClip, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
-import { recordScanClip } from "@/lib/scan-clip";
+import { recordScanClip, SCAN_CLIP_MS } from "@/lib/scan-clip";
 import { cameraRotatesNatively, enterCameraChrome, exitCameraChrome, fullscreenExitIsBack } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
@@ -1534,7 +1534,7 @@ function EsitoPhoto({ reference, video, scan, clip, name }: { reference: Referen
         </figcaption>
       </figure>}
       {clip && <figure className="ar-esito-video">
-        <video src={clip} className="ar-real-photo is-reference" autoPlay loop muted playsInline aria-label={`Mini video della scansione: ${plant}`} />
+        <FadeLoopVideo src={clip} className="ar-real-photo is-reference" label={`Mini video della scansione: ${plant}`} />
         <figcaption className="text-muted-foreground">Mini video della scansione · pochi secondi, in loop</figcaption>
       </figure>}
       {video && <figure className="ar-esito-video">
@@ -1546,6 +1546,36 @@ function EsitoPhoto({ reference, video, scan, clip, name }: { reference: Referen
       </figure>}
     </>
   );
+}
+
+/** Fade at each end of the mini video, so its loop never jumps (seconds). */
+const CLIP_FADE_S = 0.45;
+/**
+ * The mini video on a loop that fades in at the start and out at the end of every pass instead of cutting
+ * back: opacity follows the playhead each frame. Recorded webm often reports an infinite duration, so the
+ * clip's known length stands in. With reduced motion it simply loops.
+ */
+function FadeLoopVideo({ src, className, label }: { src: string; className: string; label: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { v.loop = true; v.style.opacity = "1"; void v.play().catch(() => {}); return; }
+    let frame = 0;
+    const paint = () => {
+      const length = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : SCAN_CLIP_MS / 1000;
+      const t = v.currentTime;
+      v.style.opacity = String(Math.max(0, Math.min(1, t / CLIP_FADE_S, (length - t) / CLIP_FADE_S)));
+      frame = requestAnimationFrame(paint);
+    };
+    const restart = () => { v.style.opacity = "0"; v.currentTime = 0; void v.play().catch(() => {}); };
+    v.style.opacity = "0";
+    v.addEventListener("ended", restart);
+    frame = requestAnimationFrame(paint);
+    void v.play().catch(() => {});
+    return () => { cancelAnimationFrame(frame); v.removeEventListener("ended", restart); };
+  }, [src]);
+  return <video ref={ref} src={src} className={className} muted playsInline autoPlay aria-label={label} />;
 }
 
 function cropRealPhoto(frame: HTMLCanvasElement, box: { x: number; y: number; w: number; h: number }, maxSide = 640, quality = 0.85): string | null {
