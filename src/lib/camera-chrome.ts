@@ -3,7 +3,7 @@
 //    Chrome, needs the tap that opened the camera (transient user activation). iOS has no element
 //    fullscreen, so it is skipped there.
 // 2) Always, as the fallback when fullscreen is refused: a dark theme-color, so at least the status
-//    bar turns dark. Both are undone on close.
+//    bar turns dark. Both are undone on close. In fullscreen only Android rotates (cameraRotatesNatively).
 // Android Back first only leaves fullscreen (no popstate): a fullscreen exit that does not follow a
 // rotation is that Back and closes the camera at once, so one Back is enough (fullscreenExitIsBack).
 
@@ -20,16 +20,24 @@ export function cameraChromeMode(doc: Pick<Document, "fullscreenEnabled"> & { do
 }
 
 /**
- * Fullscreen lifts the app's portrait lock, so phones would also rotate natively on top of the camera's
- * own CSS rotation (a double turn that then settles). Phones keep the screen portrait and let the camera
- * surface turn alone, as outside fullscreen; tablets (short side >= 600 px) keep rotating natively.
+ * One rotation at a time. In fullscreen the screen may rotate natively (lock "any"), so the camera stops its
+ * own CSS rotation and simply follows the native layout: no double turn. Outside fullscreen (refused, iOS,
+ * or after leaving it) the app stays portrait and the camera surface turns by itself as before.
  */
-export function isPhoneScreen(width: number, height: number) { return Math.min(width, height) < 600; }
-function holdPhonePortrait() {
-  if (!isPhoneScreen(screen.width, screen.height)) return;
+let nativeRotation = false;
+export function cameraRotatesNatively() { return nativeRotation; }
+function allowNativeRotation() {
   const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
-  void orientation?.lock?.("portrait-primary").catch(() => { /* Unsupported host: nothing to hold. */ });
+  if (!orientation?.lock) return;
+  void orientation.lock("any")
+    .then(() => { nativeRotation = Boolean(document.fullscreenElement); window.dispatchEvent(new Event("ar-orientation-change")); })
+    .catch(() => { /* Host refuses: the camera keeps its own rotation. */ });
 }
+const onFullscreenChange = () => {
+  if (document.fullscreenElement || !nativeRotation) return;
+  nativeRotation = false;
+  window.dispatchEvent(new Event("ar-orientation-change"));
+};
 
 /**
  * A screen-orientation change within this window explains a fullscreen exit. Resize is not used: leaving
@@ -58,9 +66,10 @@ export function enterCameraChrome(): Promise<boolean> {
     headWatch.observe(document.head, { childList: true });
   }
   screen.orientation?.addEventListener?.("change", markTurn);
+  document.addEventListener("fullscreenchange", onFullscreenChange);
   if (cameraChromeMode(document) !== "fullscreen" || document.fullscreenElement) return Promise.resolve(false);
   return document.documentElement.requestFullscreen({ navigationUI: "hide" })
-    .then(() => { enteredFullscreen = true; holdPhonePortrait(); return true; })
+    .then(() => { enteredFullscreen = true; allowNativeRotation(); return true; })
     .catch(() => false /* Refused (no user activation, WebView, policy): dark bars stay. */);
 }
 
@@ -69,6 +78,8 @@ export function exitCameraChrome() {
   headWatch = null;
   cameraMeta?.remove();
   screen.orientation?.removeEventListener?.("change", markTurn);
+  document.removeEventListener("fullscreenchange", onFullscreenChange);
+  nativeRotation = false;
   if (enteredFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
   enteredFullscreen = false;
 }

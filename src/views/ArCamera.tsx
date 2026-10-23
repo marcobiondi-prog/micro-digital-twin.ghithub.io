@@ -37,7 +37,7 @@ import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
 import { clearScans, recordScan, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
-import { enterCameraChrome, exitCameraChrome, fullscreenExitIsBack } from "@/lib/camera-chrome";
+import { cameraRotatesNatively, enterCameraChrome, exitCameraChrome, fullscreenExitIsBack } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -276,10 +276,14 @@ export function ArCamera({
       const rect = surfaceRef.current?.getBoundingClientRect();
       if (!rect?.width || !rect.height) return;
       const angle = screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
-      const next = cameraViewport(rect.width, rect.height, angle, beta, gamma, current.rotation, screen.orientation?.type);
+      // In fullscreen Android rotates the screen itself: follow its layout, never add a CSS turn on top.
+      const native = cameraRotatesNatively();
+      const next = native
+        ? { width: rect.width, height: rect.height, rotation: 0, landscape: rect.width > rect.height }
+        : cameraViewport(rect.width, rect.height, angle, beta, gamma, current.rotation, screen.orientation?.type);
       if (next.width === current.width && next.height === current.height && next.rotation === current.rotation) return;
       const turn = shortestRotationDelta(current.rotation, next.rotation);
-      const animate = current.width > 0 && !reducedMotion.matches && (turn !== 0 || next.landscape !== current.landscape);
+      const animate = !native && current.width > 0 && !reducedMotion.matches && (turn !== 0 || next.landscape !== current.landscape);
       const apply = () => { rotationRef.current = next.rotation; current = next; setViewport(next); };
       transition?.skipTransition();
       if (animate && document.startViewTransition) {
@@ -309,6 +313,7 @@ export function ArCamera({
     sync();
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
+    window.addEventListener("ar-orientation-change", onResize);
     screen.orientation?.addEventListener("change", onResize);
     window.addEventListener("deviceorientation", onDevice);
     window.addEventListener("deviceorientationabsolute", onDevice as EventListener);
@@ -320,6 +325,7 @@ export function ArCamera({
       document.documentElement.style.removeProperty("--ar-rotation-turn");
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
+      window.removeEventListener("ar-orientation-change", onResize);
       screen.orientation?.removeEventListener("change", onResize);
       window.removeEventListener("deviceorientation", onDevice);
       window.removeEventListener("deviceorientationabsolute", onDevice as EventListener);
