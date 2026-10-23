@@ -11,6 +11,8 @@ type D = NonNullable<Detection>;
 const BIN_EMPTY_MS = 1100;
 /** Scan uploads: main frame, leaf close-up and the smaller retry frame (longest side, px). */
 const SCAN_IMAGE_PX = 1280, SCAN_DETAIL_PX = 768, SCAN_RETRY_PX = 960;
+/** Long side of the light scan photo stored with each report record (Esito on a swiped-back scan). */
+const SCAN_PHOTO_PX = 400;
 /** The server-fn client turns an HTTP error with an empty body into an Error with an empty message. */
 const isEmptyHttpError = (error: unknown) => error instanceof Error && !error.message.trim();
 /** JPEG of the frame, scaled down so its longest side is at most `maxSide`. */
@@ -30,7 +32,7 @@ type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identifi
 type TabResult = {
   found: string | null; soil: Soil; survey: GroundSurvey | null; species: SpeciesInfo | null; count: number;
   taps: { x: number; y: number }[]; cooling: PlacementCooling[]; last: Parameters<ArScene["place"]> | null;
-  plantPhoto: HTMLCanvasElement | null; photoPreview: string | null; recordId: string | null; thermalMin: boolean;
+  plantPhoto: HTMLCanvasElement | null; photoPreview: string | null; realPhoto: string | null; recordId: string | null; thermalMin: boolean;
 };
 import { type GroundSurvey } from "@/models/ar-recognition";
 import { AR_FOCUS, arFocusOption, defaultArFocus, scanMissing, scanPrecheck, type ArFocus } from "@/models/ar-focus";
@@ -53,7 +55,7 @@ import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models
 import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
-import { clearScans, recordScan, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
+import { clearScans, recordScan, scanPhoto, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
 import { cameraRotatesNatively, enterCameraChrome, exitCameraChrome, fullscreenExitIsBack } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
@@ -170,6 +172,8 @@ export function ArCamera({
   const [target, setTarget] = useState<ArFocus>(() => defaultArFocus(kind));
   useEffect(() => { setTarget(defaultArFocus(kind)); }, [kind]);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // The real photograph of the scanned plant (the frozen frame cropped to its box): Esito's main picture.
+  const [realPhoto, setRealPhoto] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<"analysis" | "manage" | null>(null);
   const [species, setSpecies] = useState<SpeciesInfo | null>(null);
   const [count, setCount] = useState(0);
@@ -416,7 +420,7 @@ export function ArCamera({
     last.current = null;
     setFound(null);
     setSoil(null);
-    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null);
     setSpecies(null);
     setPanelOpen(true);
     setToolsOpen(false); setActiveTool(null);
@@ -556,21 +560,21 @@ export function ArCamera({
     last.current = null; scanRecordId.current = null;
     setSpecies(null);
     setSoil(null);
-    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null);
     setFound(null);
   };
   // Switching section keeps each section's own scan: the current one is set aside and the other's comes back
   // (empty the first time). A running scan stops; completed scans are also in the report log.
   const snapshotResults = (): TabResult => ({
     found, soil, survey, species, count: countRef.current, taps: taps.current, cooling: plantedCooling.current,
-    last: last.current, plantPhoto: plantPhoto.current, photoPreview, recordId: scanRecordId.current, thermalMin,
+    last: last.current, plantPhoto: plantPhoto.current, photoPreview, realPhoto, recordId: scanRecordId.current, thermalMin,
   });
   const restoreResults = (r: TabResult) => {
     countRef.current = r.count; setCount(r.count);
     taps.current = r.taps; plantedCooling.current = r.cooling;
     last.current = r.last; scanRecordId.current = r.recordId;
     setSpecies(r.species); setSoil(r.soil); setSurvey(r.survey);
-    plantPhoto.current = r.plantPhoto; setPhotoPreview(r.photoPreview);
+    plantPhoto.current = r.plantPhoto; setPhotoPreview(r.photoPreview); setRealPhoto(r.realPhoto);
     setFound(r.found); setThermalMin(r.thermalMin);
   };
   const selectTarget = (next: ArFocus) => {
@@ -583,9 +587,9 @@ export function ArCamera({
     setTarget(next);
   };
   // Every completed scan goes to the report log, photo or not.
-  const logScan = (result: string, sp: SpeciesInfo | null, ground: Soil) => {
+  const logScan = (result: string, sp: SpeciesInfo | null, ground: Soil, photo: string | null = null) => {
     scanRecordId.current = recordScan({
-      kind, target: arFocusOption(kind, target).label, context: context ?? "", result,
+      kind, photo, target: arFocusOption(kind, target).label, context: context ?? "", result,
       species: sp ? {
         commonName: sp.commonName, scientificName: sp.scientificName, family: sp.family ?? null,
         level: sp.identification?.level === "species" ? "Specie probabile" : sp.identification?.level === "genus" ? "Genere probabile" : "Identificazione incerta",
@@ -667,6 +671,7 @@ export function ArCamera({
         logScan("Terreno analizzato · nessuna specie identificata", null, r.soil ?? null);
         return;
       }
+      setRealPhoto(cropRealPhoto(small, d.box));
       const cutout = d.outline ? await extractPlantPhoto(image, d.outline) : null;
       if (version !== scanVersion.current) return;
       plantPhoto.current = cutout;
@@ -691,7 +696,8 @@ export function ArCamera({
         ? `${d.species.commonName} · ${d.identification?.level === "genus" ? "genere probabile" : "specie probabile"}`
         : `${d.label} · specie incerta, inquadra una foglia da vicino`;
       setFound(outcome);
-      logScan(outcome, identified, r.soil ?? null);
+      // The report keeps a lighter copy (about 20-30 kB), so a reload keeps each scan's photo in Esito.
+      logScan(outcome, identified, r.soil ?? null, cropRealPhoto(small, d.box, SCAN_PHOTO_PX, 0.72));
 
     } catch (error) {
       console.error("AR scan", error);
@@ -938,7 +944,7 @@ export function ArCamera({
     return (
       <>
         <p className="ar-esito-page">Scansione {viewPage + 1} di {pageCount} · {r.target} · {new Date(r.at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</p>
-        <EsitoPhoto reference={r.species?.photo ?? null} name={r.species?.commonName ?? null} />
+        <EsitoPhoto scan={scanPhoto(r.id)} reference={r.species?.photo ?? null} name={r.species?.commonName ?? null} />
         {r.species ? (
           <p>
             <span className="text-sm font-semibold">{r.species.commonName}</span>{" "}
@@ -1323,7 +1329,7 @@ export function ArCamera({
                     aria-live="polite"
                   >
                   {viewedRecord ? recordEsito(viewedRecord) : <>
-                  <EsitoPhoto reference={species?.photo ?? null} name={species?.commonName ?? null} />
+                  <EsitoPhoto scan={realPhoto} reference={species?.photo ?? null} name={species?.commonName ?? null} />
                   {species ? (
                     <p>
                       <span className="text-sm font-semibold">{species.commonName}</span>{" "}
@@ -1488,18 +1494,43 @@ function thermal(g: CanvasRenderingContext2D, w: number, h: number, taps: { x: n
 }
 
 /**
- * Esito photo: only the species' reference photo of the whole plant from the botanical database (Kew, else
- * GBIF), uncropped, with its credit as a plain caption (no link). Nothing when there is none or it fails.
+ * Esito photo: the scan's own photo is the main picture; the species' reference photo of the whole plant from
+ * the botanical database (Kew, else GBIF) sits in a large corner frame, uncropped so the plant stays readable,
+ * credited by a plain caption (no link). Either one alone fills the frame when the other is missing.
  */
-function EsitoPhoto({ reference, name }: { reference: ReferencePhoto | null; name: string | null }) {
+function EsitoPhoto({ scan, reference, name }: { scan: string | null; reference: ReferencePhoto | null; name: string | null }) {
   const [failed, setFailed] = useState<string | null>(null);
-  if (!reference || reference.url === failed) return null;
+  const ref = reference && reference.url !== failed ? reference : null;
+  if (!scan && !ref) return null;
+  const plant = name ?? "pianta scansionata";
+  const refImg = (className: string) => ref && <img src={ref.url} alt={`Foto di riferimento: ${plant}`} className={className} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(ref.url)} />;
   return (
     <figure className="ar-esito-photo">
-      <img src={reference.url} alt={`Foto di riferimento: ${name ?? "specie riconosciuta"}`} className="ar-real-photo is-reference" referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(reference.url)} />
-      <figcaption className="text-muted-foreground">Foto di riferimento · {reference.credit}</figcaption>
+      <div className="relative">
+        {scan ? <img src={scan} alt={`Foto reale: ${plant}`} className="ar-real-photo" /> : refImg("ar-real-photo is-reference")}
+        {scan && refImg("ar-esito-reference-inset")}
+      </div>
+      <figcaption className="text-muted-foreground">
+        {scan ? "Foto della scansione" : null}{scan && ref ? " · nel riquadro " : null}{ref ? `${scan ? "foto" : "Foto"} di riferimento · ${ref.credit}` : null}
+      </figcaption>
     </figure>
   );
+}
+
+/** Real photo of the scanned plant: the recognition frame cropped to the detection box with a small margin. */
+function cropRealPhoto(frame: HTMLCanvasElement, box: { x: number; y: number; w: number; h: number }, maxSide = 640, quality = 0.85): string | null {
+  const m = 0.06;
+  const x = Math.max(0, box.x - m), y = Math.max(0, box.y - m);
+  const w = Math.min(1 - x, box.w + 2 * m), h = Math.min(1 - y, box.h + 2 * m);
+  const sw = w * frame.width, sh = h * frame.height;
+  if (sw < 8 || sh < 8) return null;
+  const scale = Math.min(1, maxSide / Math.max(sw, sh));
+  const out = document.createElement("canvas");
+  out.width = Math.round(sw * scale); out.height = Math.round(sh * scale);
+  const g = out.getContext("2d");
+  if (!g) return null;
+  g.drawImage(frame, x * frame.width, y * frame.height, sw, sh, 0, 0, out.width, out.height);
+  return out.toDataURL("image/jpeg", quality);
 }
 
 /** Big bin beside Annulla; while emptying, the lid lifts and the files fly out until the deletion ends. */
