@@ -1511,8 +1511,9 @@ function thermal(g: CanvasRenderingContext2D, w: number, h: number, taps: { x: n
 /** Real photo of the scanned plant: the recognition frame cropped to the detection box with a small margin. */
 /**
  * Esito media: the species' reference photo of the whole plant from the botanical database (Kew, else GBIF)
- * with its credit, the scan's mini video (else its photo) as an inset, and the Wikimedia Commons video of the
- * species when one exists. Without a database photo the scan photo (or the mini video) takes the frame.
+ * with its credit and the scan photo as an inset; then the scan's mini video (short in length, full width,
+ * looping and muted) and the Wikimedia Commons video of the species when one exists. Without a database photo
+ * the scan photo takes the frame.
  */
 function EsitoPhoto({ reference, video, scan, clip, name }: { reference: ReferencePhoto | null; video: ReferenceVideo | null; scan: string | null; clip: string | null; name: string | null }) {
   const [failed, setFailed] = useState<string | null>(null);
@@ -1520,20 +1521,18 @@ function EsitoPhoto({ reference, video, scan, clip, name }: { reference: Referen
   const plant = name ?? "pianta scansionata";
   const main = ref
     ? <img src={ref.url} alt={`Foto di riferimento: ${plant}`} className="ar-real-photo is-reference" referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(ref.url)} />
-    : scan ? <img src={scan} alt={`Foto reale: ${plant}`} className="ar-real-photo" />
-    : clip ? <video src={clip} className="ar-real-photo" autoPlay loop muted playsInline aria-label={`Mini video: ${plant}`} />
-    : null;
-  // The inset is the mini video when there is one (looping, muted), else the scan photo under a database photo.
-  const inset = clip && (ref || scan) ? <video src={clip} className="ar-esito-scan-inset" autoPlay loop muted playsInline aria-label="Mini video della tua scansione" title="La tua scansione" />
-    : ref && scan ? <img src={scan} alt="La tua scansione" title="La tua scansione" className="ar-esito-scan-inset" /> : null;
+    : scan ? <img src={scan} alt={`Foto reale: ${plant}`} className="ar-real-photo" /> : null;
   return (
     <>
       {main && <figure className="ar-esito-photo">
-        <div className="relative">{main}{inset}</div>
+        <div className="relative">{main}{ref && scan && <img src={scan} alt="La tua scansione" title="La tua scansione" className="ar-esito-scan-inset" />}</div>
         <figcaption className="text-muted-foreground">
-          {ref ? <>Foto di riferimento · <a href={ref.link} target="_blank" rel="noreferrer" className="underline">{ref.credit}</a></> : scan ? "Foto reale dalla scansione · inquadratura della pianta" : "Mini video della scansione"}
-          {clip && (ref || scan) ? " · nel riquadro il mini video della scansione" : ""}
+          {ref ? <>Foto di riferimento · <a href={ref.link} target="_blank" rel="noreferrer" className="underline">{ref.credit}</a></> : "Foto reale dalla scansione · inquadratura della pianta"}
         </figcaption>
+      </figure>}
+      {clip && <figure className="ar-esito-video">
+        <video src={clip} className="ar-real-photo is-reference" autoPlay loop muted playsInline aria-label={`Mini video della scansione: ${plant}`} />
+        <figcaption className="text-muted-foreground">Mini video della scansione · pochi secondi, in loop</figcaption>
       </figure>}
       {video && <figure className="ar-esito-video">
         {/* Not autoplayed: it streams from Commons only when asked. */}
