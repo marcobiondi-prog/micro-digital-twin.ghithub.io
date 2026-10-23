@@ -1866,11 +1866,11 @@ html[data-home-video], html[data-home-video] body { overflow: hidden; overscroll
 
 /* In-camera confirm (turns with the camera surface in landscape, unlike window.confirm). */
 .ar-confirm-veil { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem; background: oklch(0 0 0 / 35%); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-.ar-confirm { width: min(20rem, 100%); padding: 1.125rem 1.125rem .875rem; border-radius: 1.25rem; color: var(--camera-ink); background: var(--camera-glass); border: 1px solid var(--camera-border); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 20px 50px -20px oklch(0 0 0 / 70%); animation: ar-confirm-in 160ms ease-out; }
-/* The veil already centres the confirm: fade only, no translate (the tutorial's keyframes offset by -50%). */
-.ar-confirm-veil { animation: ar-confirm-veil-in 160ms ease-out; }
-@keyframes ar-confirm-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
-@keyframes ar-confirm-veil-in { from { opacity: 0; } to { opacity: 1; } }
+.ar-confirm { width: min(20rem, 100%); padding: 1.125rem 1.125rem .875rem; border-radius: 1.25rem; color: var(--camera-ink); background: var(--camera-glass); border: 1px solid var(--camera-border); backdrop-filter: blur(22px) saturate(1.4); box-shadow: 0 20px 50px -20px oklch(0 0 0 / 70%); animation: ar-confirm-in 240ms ease-out; }
+/* The veil already centres the confirm: a blurred fade in place, no translate (the tutorial's keyframes offset by -50%). */
+.ar-confirm-veil { animation: ar-confirm-veil-in 240ms ease-out; }
+@keyframes ar-confirm-in { from { opacity: 0; transform: scale(.96); filter: blur(8px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes ar-confirm-veil-in { from { opacity: 0; -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0); } to { opacity: 1; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); } }
 .ar-confirm-title { display: flex; align-items: center; gap: .5rem; font-size: .95rem; font-weight: 700; }
 .ar-confirm-text { margin-top: .5rem; font-size: .8125rem; line-height: 1.45; opacity: .85; }
 .ar-confirm-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
