@@ -19,14 +19,17 @@ describe("ar-scan-log", () => {
     expect(rows[1]![1]).toBe("Piazza · suolo Asfalto · permeabilità bassa · non piantabile");
   });
 
-  it("keeps each scan's real photo for Esito until the scans are cleared", () => {
+  it("keeps each scan's real photo for Esito, across reloads, until the scans are cleared", () => {
     clearScans("urban");
     const id = recordScan({ ...base, result: "Ficus", soil: null, count: 0, totalCooling: null, totalShade: null, species: null, photo: "data:image/jpeg;base64,AA" });
     const none = recordScan({ ...base, result: "Terreno", soil: null, count: 0, totalCooling: null, totalShade: null, species: null });
     expect(scanPhoto(id)).toBe("data:image/jpeg;base64,AA");
     expect(scanPhoto(none)).toBeNull();
     expect(currentScans("urban")[0]).not.toHaveProperty("photo");
+    // Stored apart from the records, so a reload finds it again.
+    expect(sessionStorage.getItem(`micro-digital-twin-ar-scan-photo:${id}`)).toBe("data:image/jpeg;base64,AA");
     clearScans("urban");
     expect(scanPhoto(id)).toBeNull();
+    expect(sessionStorage.getItem(`micro-digital-twin-ar-scan-photo:${id}`)).toBeNull();
   });
 });

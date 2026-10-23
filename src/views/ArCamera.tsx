@@ -10,6 +10,8 @@ type D = NonNullable<Detection>;
 const BIN_EMPTY_MS = 1100;
 /** Scan uploads: main frame, leaf close-up and the smaller retry frame (longest side, px). */
 const SCAN_IMAGE_PX = 1280, SCAN_DETAIL_PX = 768, SCAN_RETRY_PX = 960;
+/** Long side of the light scan photo stored with each report record (Esito on a swiped-back scan). */
+const SCAN_PHOTO_PX = 400;
 /** The server-fn client turns an HTTP error with an empty body into an Error with an empty message. */
 const isEmptyHttpError = (error: unknown) => error instanceof Error && !error.message.trim();
 /** JPEG of the frame, scaled down so its longest side is at most `maxSide`. */
@@ -691,7 +693,8 @@ export function ArCamera({
         ? `${d.species.commonName} · ${d.identification?.level === "genus" ? "genere probabile" : "specie probabile"}`
         : `${d.label} · specie incerta, inquadra una foglia da vicino`;
       setFound(outcome);
-      logScan(outcome, identified, r.soil ?? null, photo);
+      // The report keeps a lighter copy (about 20-30 kB), so a reload keeps each scan's photo in Esito.
+      logScan(outcome, identified, r.soil ?? null, photo && cropRealPhoto(small, d.box, SCAN_PHOTO_PX, 0.72));
 
     } catch (error) {
       console.error("AR scan", error);
@@ -1483,19 +1486,19 @@ function thermal(g: CanvasRenderingContext2D, w: number, h: number, taps: { x: n
 }
 
 /** Real photo of the scanned plant: the recognition frame cropped to the detection box with a small margin. */
-function cropRealPhoto(frame: HTMLCanvasElement, box: { x: number; y: number; w: number; h: number }): string | null {
+function cropRealPhoto(frame: HTMLCanvasElement, box: { x: number; y: number; w: number; h: number }, maxSide = 640, quality = 0.85): string | null {
   const m = 0.06;
   const x = Math.max(0, box.x - m), y = Math.max(0, box.y - m);
   const w = Math.min(1 - x, box.w + 2 * m), h = Math.min(1 - y, box.h + 2 * m);
   const sw = w * frame.width, sh = h * frame.height;
   if (sw < 8 || sh < 8) return null;
-  const scale = Math.min(1, 640 / Math.max(sw, sh));
+  const scale = Math.min(1, maxSide / Math.max(sw, sh));
   const out = document.createElement("canvas");
   out.width = Math.round(sw * scale); out.height = Math.round(sh * scale);
   const g = out.getContext("2d");
   if (!g) return null;
   g.drawImage(frame, x * frame.width, y * frame.height, sw, sh, 0, 0, out.width, out.height);
-  return out.toDataURL("image/jpeg", 0.85);
+  return out.toDataURL("image/jpeg", quality);
 }
 
 /** Big bin beside Annulla; while emptying, the lid lifts and the files fly out until the deletion ends. */
