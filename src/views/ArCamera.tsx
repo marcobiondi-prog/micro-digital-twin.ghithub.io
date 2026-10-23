@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { Activity, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Flame, Info, Grid2X2, Minus, Plus, ScanSearch, SlidersHorizontal, Square, Trash2, Undo2, X, Zap, ZapOff } from "lucide-react";
 import { supportsCameraTorch, setCameraTorch } from "@/lib/camera-torch";
 import { detectArObject, type Detection, type Soil } from "@/controllers/ar-detect.functions";
-import type { ReferencePhoto } from "@/models/ar-reference-photo";
+import type { ReferencePhoto, ReferenceVideo } from "@/models/ar-reference-photo";
 import { findSubject, SEARCH_BOX, smoothBox, type SubjectBox } from "@/lib/ar-subject-tracker";
 import { extractPlantPhoto } from "@/views/ar-plant-photo";
 
@@ -32,7 +32,7 @@ type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identifi
 type TabResult = {
   found: string | null; soil: Soil; survey: GroundSurvey | null; species: SpeciesInfo | null; count: number;
   taps: { x: number; y: number }[]; cooling: PlacementCooling[]; last: Parameters<ArScene["place"]> | null;
-  plantPhoto: HTMLCanvasElement | null; photoPreview: string | null; realPhoto: string | null; recordId: string | null; thermalMin: boolean;
+  plantPhoto: HTMLCanvasElement | null; photoPreview: string | null; realPhoto: string | null; clip: string | null; recordId: string | null; thermalMin: boolean;
 };
 import { type GroundSurvey } from "@/models/ar-recognition";
 import { AR_FOCUS, arFocusOption, defaultArFocus, scanMissing, scanPrecheck, type ArFocus } from "@/models/ar-focus";
@@ -55,7 +55,8 @@ import { satelliteContext, satelliteLine, type SatelliteContext } from "@/models
 import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
-import { clearScans, recordScan, scanPhoto, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
+import { clearScans, recordScan, scanClip, scanPhoto, setScanClip, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
+import { recordScanClip } from "@/lib/scan-clip";
 import { cameraRotatesNatively, enterCameraChrome, exitCameraChrome, fullscreenExitIsBack } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
@@ -174,6 +175,8 @@ export function ArCamera({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   // The real photograph of the scanned plant (the frozen frame cropped to its box), shown in Esito.
   const [realPhoto, setRealPhoto] = useState<string | null>(null);
+  // Mini video of the scanned plant: a few seconds of the camera recorded during the scan (lib/scan-clip).
+  const [liveClip, setLiveClip] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<"analysis" | "manage" | null>(null);
   const [species, setSpecies] = useState<SpeciesInfo | null>(null);
   const [count, setCount] = useState(0);
@@ -417,7 +420,7 @@ export function ArCamera({
     last.current = null;
     setFound(null);
     setSoil(null);
-    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null); setLiveClip(null);
     setSpecies(null);
     setPanelOpen(true);
     setToolsOpen(false); setActiveTool(null);
@@ -557,21 +560,21 @@ export function ArCamera({
     last.current = null; scanRecordId.current = null;
     setSpecies(null);
     setSoil(null);
-    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null);
+    setSurvey(null); plantPhoto.current = null; setPhotoPreview(null); setRealPhoto(null); setLiveClip(null);
     setFound(null);
   };
   // Switching section keeps each section's own scan: the current one is set aside and the other's comes back
   // (empty the first time). A running scan stops; completed scans are also in the report log.
   const snapshotResults = (): TabResult => ({
     found, soil, survey, species, count: countRef.current, taps: taps.current, cooling: plantedCooling.current,
-    last: last.current, plantPhoto: plantPhoto.current, photoPreview, realPhoto, recordId: scanRecordId.current, thermalMin,
+    last: last.current, plantPhoto: plantPhoto.current, photoPreview, realPhoto, clip: liveClip, recordId: scanRecordId.current, thermalMin,
   });
   const restoreResults = (r: TabResult) => {
     countRef.current = r.count; setCount(r.count);
     taps.current = r.taps; plantedCooling.current = r.cooling;
     last.current = r.last; scanRecordId.current = r.recordId;
     setSpecies(r.species); setSoil(r.soil); setSurvey(r.survey);
-    plantPhoto.current = r.plantPhoto; setPhotoPreview(r.photoPreview); setRealPhoto(r.realPhoto);
+    plantPhoto.current = r.plantPhoto; setPhotoPreview(r.photoPreview); setRealPhoto(r.realPhoto); setLiveClip(r.clip);
     setFound(r.found); setThermalMin(r.thermalMin);
   };
   const selectTarget = (next: ArFocus) => {
@@ -590,7 +593,7 @@ export function ArCamera({
       species: sp ? {
         commonName: sp.commonName, scientificName: sp.scientificName, family: sp.family ?? null,
         level: sp.identification?.level === "species" ? "Specie probabile" : sp.identification?.level === "genus" ? "Genere probabile" : "Identificazione incerta",
-        cooling: sp.cooling?.deltaT ?? null, shade: sp.cooling?.shadeM2 ?? null, photo: sp.photo,
+        cooling: sp.cooling?.deltaT ?? null, shade: sp.cooling?.shadeM2 ?? null, photo: sp.photo, video: sp.video,
       } : null,
       soil: ground ? { label: ground.label, permeability: ground.permeability, plantable: ground.plantable, note: ground.note } : null,
       count: 0, totalCooling: sp?.cooling ? 0 : null, totalShade: sp?.cooling ? 0 : null, satellite: satelliteText,
@@ -603,6 +606,9 @@ export function ArCamera({
     const version = scanVersion.current;
     scanBusy.current = true;
     scanningRef.current = true;
+    // The mini video belongs to the scan's record once a plant is recognized (resolved with its id), else null.
+    let keepClipFor: (recordId: string | null) => void = () => {};
+    const clipOwner = new Promise<string | null>((resolve) => { keepClipFor = resolve; });
     resetResults();
       setScanning(true);
       setPanelOpen(true);
@@ -624,6 +630,14 @@ export function ArCamera({
       // Recognition and frozen preview preserve the live crop and rotation.
       const small = freezeCameraFrame(c, video, -rotationRef.current, digitalZoomRef.current);
       if (!small) return;
+      // The mini video records alongside the AI request, so it never lengthens the scan.
+      // Only a recognized plant keeps it, on that scan's record; any other outcome drops it.
+      void Promise.all([recording ? null : recordScanClip(streamRef.current), clipOwner]).then(([url, id]) => {
+        if (!url) return;
+        if (!id) { URL.revokeObjectURL(url); return; }
+        setScanClip(id, url);
+        if (version === scanVersion.current && scanRecordId.current === id) setLiveClip(url);
+      });
       // Lighter upload (≤1280 px, q0.85): large tablet frames could fail as an empty HTTP error.
       const image = encodeFrame(small, SCAN_IMAGE_PX, 0.85);
       playCameraSound("scan-start", 1.8);
@@ -696,6 +710,7 @@ export function ArCamera({
       setFound(outcome);
       // The report keeps a lighter copy (about 20-30 kB), so a reload keeps each scan's photo in Esito.
       logScan(outcome, identified, r.soil ?? null, photo && cropRealPhoto(small, d.box, SCAN_PHOTO_PX, 0.72));
+      keepClipFor(scanRecordId.current);
 
     } catch (error) {
       console.error("AR scan", error);
@@ -705,6 +720,7 @@ export function ArCamera({
       if (version === scanVersion.current) playCameraSound("scan-fail", 1.8);
       if (version === scanVersion.current) setFound(/Unauthorized/.test(message) ? "Sessione scaduta: esci e accedi di nuovo prima di una nuova analisi." : `Analisi interrotta${detail ? ` (${detail})` : ""}. Controlla la connessione prima di una nuova analisi.`);
     } finally {
+      keepClipFor(null); // no-op once a recognized plant claimed the clip
       if (version === scanVersion.current) { scanBusy.current = false; scanningRef.current = false; setScanning(false); }
     }
   };
@@ -943,7 +959,7 @@ export function ArCamera({
     return (
       <>
         <p className="ar-esito-page">Scansione {viewPage + 1} di {pageCount} · {r.target} · {new Date(r.at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</p>
-        <EsitoPhoto reference={r.species?.photo ?? null} scan={photo} name={r.species?.commonName ?? null} />
+        <EsitoPhoto reference={r.species?.photo ?? null} video={r.species?.video ?? null} scan={photo} clip={scanClip(r.id)} name={r.species?.commonName ?? null} />
         {r.species ? (
           <p>
             <span className="text-sm font-semibold">{r.species.commonName}</span>{" "}
@@ -1328,7 +1344,7 @@ export function ArCamera({
                     aria-live="polite"
                   >
                   {viewedRecord ? recordEsito(viewedRecord) : <>
-                  <EsitoPhoto reference={species?.photo ?? null} scan={realPhoto} name={species?.commonName ?? null} />
+                  <EsitoPhoto reference={species?.photo ?? null} video={species?.video ?? null} scan={realPhoto} clip={liveClip} name={species?.commonName ?? null} />
                   {species ? (
                     <p>
                       <span className="text-sm font-semibold">{species.commonName}</span>{" "}
@@ -1494,24 +1510,39 @@ function thermal(g: CanvasRenderingContext2D, w: number, h: number, taps: { x: n
 
 /** Real photo of the scanned plant: the recognition frame cropped to the detection box with a small margin. */
 /**
- * Esito photo: the species' reference photo from the botanical database (Kew, else GBIF) with its credit,
- * and the scan's own crop as a small inset; the scan crop alone when no database photo exists or it fails.
+ * Esito media: the species' reference photo of the whole plant from the botanical database (Kew, else GBIF)
+ * with its credit, the scan's mini video (else its photo) as an inset, and the Wikimedia Commons video of the
+ * species when one exists. Without a database photo the scan photo (or the mini video) takes the frame.
  */
-function EsitoPhoto({ reference, scan, name }: { reference: ReferencePhoto | null; scan: string | null; name: string | null }) {
+function EsitoPhoto({ reference, video, scan, clip, name }: { reference: ReferencePhoto | null; video: ReferenceVideo | null; scan: string | null; clip: string | null; name: string | null }) {
   const [failed, setFailed] = useState<string | null>(null);
   const ref = reference && reference.url !== failed ? reference : null;
-  if (!ref && !scan) return null;
+  const plant = name ?? "pianta scansionata";
+  const main = ref
+    ? <img src={ref.url} alt={`Foto di riferimento: ${plant}`} className="ar-real-photo is-reference" referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(ref.url)} />
+    : scan ? <img src={scan} alt={`Foto reale: ${plant}`} className="ar-real-photo" />
+    : clip ? <video src={clip} className="ar-real-photo" autoPlay loop muted playsInline aria-label={`Mini video: ${plant}`} />
+    : null;
+  // The inset is the mini video when there is one (looping, muted), else the scan photo under a database photo.
+  const inset = clip && (ref || scan) ? <video src={clip} className="ar-esito-scan-inset" autoPlay loop muted playsInline aria-label="Mini video della tua scansione" title="La tua scansione" />
+    : ref && scan ? <img src={scan} alt="La tua scansione" title="La tua scansione" className="ar-esito-scan-inset" /> : null;
   return (
-    <figure className="ar-esito-photo">
-      <div className="relative">
-        <img src={ref?.url ?? scan!} alt={ref ? `Foto di riferimento: ${name ?? "specie riconosciuta"}` : `Foto reale: ${name ?? "pianta scansionata"}`}
-          className={`ar-real-photo${ref ? " is-reference" : ""}`} referrerPolicy="no-referrer" loading="lazy" onError={() => { if (ref) setFailed(ref.url); }} />
-        {ref && scan && <img src={scan} alt="La tua scansione" title="La tua scansione" className="ar-esito-scan-inset" />}
-      </div>
-      <figcaption className="text-muted-foreground">
-        {ref ? <>Foto di riferimento · <a href={ref.link} target="_blank" rel="noreferrer" className="underline">{ref.credit}</a></> : "Foto reale dalla scansione · inquadratura della pianta"}
-      </figcaption>
-    </figure>
+    <>
+      {main && <figure className="ar-esito-photo">
+        <div className="relative">{main}{inset}</div>
+        <figcaption className="text-muted-foreground">
+          {ref ? <>Foto di riferimento · <a href={ref.link} target="_blank" rel="noreferrer" className="underline">{ref.credit}</a></> : scan ? "Foto reale dalla scansione · inquadratura della pianta" : "Mini video della scansione"}
+          {clip && (ref || scan) ? " · nel riquadro il mini video della scansione" : ""}
+        </figcaption>
+      </figure>}
+      {video && <figure className="ar-esito-video">
+        {/* Not autoplayed: it streams from Commons only when asked. */}
+        <video controls muted playsInline preload="metadata" className="ar-real-photo is-reference" aria-label={`Video di riferimento: ${plant}`}>
+          {video.sources.map((s) => <source key={s.url} src={s.url} type={s.type} />)}
+        </video>
+        <figcaption className="text-muted-foreground">Video di riferimento · <a href={video.link} target="_blank" rel="noreferrer" className="underline">{video.credit}</a></figcaption>
+      </figure>}
+    </>
   );
 }
 
