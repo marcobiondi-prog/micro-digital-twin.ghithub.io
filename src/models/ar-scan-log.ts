@@ -43,8 +43,16 @@ function hydrate(k: ArKind) {
     if (Array.isArray(saved)) state[k] = saved.filter((r): r is ScanRecord => !!r && typeof r.id === "string").slice(-MAX_SCAN_RECORDS);
   } catch { /* corrupted or unavailable: start empty */ }
 }
+// Real photo of each scan (the cropped frame), memory only: too heavy for sessionStorage. Esito shows it
+// again when the summary is swiped back to that scan.
+const photos = new Map<string, string>();
+export function scanPhoto(id: string): string | null { return photos.get(id) ?? null; }
+
 function commit(k: ArKind, next: ScanRecord[]) {
+  const dropped = state[k];
   state[k] = next.slice(-MAX_SCAN_RECORDS);
+  const kept = new Set(state[k].map((r) => r.id));
+  for (const r of dropped) if (!kept.has(r.id)) photos.delete(r.id);
   try { storage()?.setItem(KEY(k), JSON.stringify(state[k])); } catch { /* quota or private mode: memory only */ }
   subs.forEach((f) => f());
 }
@@ -52,9 +60,10 @@ function commit(k: ArKind, next: ScanRecord[]) {
 export function currentScans(k: ArKind): ScanRecord[] { hydrate(k); return state[k]; }
 
 /** Adds a scan and returns its id, used to keep its specimen count up to date. */
-export function recordScan(record: Omit<ScanRecord, "id" | "at"> & { at?: string }): string {
+export function recordScan({ photo, ...record }: Omit<ScanRecord, "id" | "at"> & { at?: string; photo?: string | null }): string {
   hydrate(record.kind);
   const id = `scan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  if (photo) photos.set(id, photo);
   commit(record.kind, [...state[record.kind], { ...record, id, at: record.at ?? new Date().toISOString() }]);
   return id;
 }
