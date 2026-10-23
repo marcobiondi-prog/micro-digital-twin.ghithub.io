@@ -37,7 +37,7 @@ import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
 import { clearScans, recordScan, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
-import { enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
+import { enterCameraChrome, exitCameraChrome, fullscreenExitIsBack } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -333,19 +333,19 @@ export function ArCamera({
   useEffect(() => {
     if (!mode) return;
     setArOrientationActive(true);
-    // Dark system bars instead of white ones (lib/camera-chrome); no browser fullscreen.
-    enterCameraChrome();
+    // No white system bars: fullscreen where allowed, else dark bars (lib/camera-chrome).
+    void enterCameraChrome();
     return () => { setArOrientationActive(false); exitCameraChrome(); };
   }, [mode]);
 
   useEffect(() => {
     if (!mode) return;
-    // Android Back first leaves native fullscreen without firing popstate.
-    // Close the camera too, so no intermediate camera window remains visible.
+    // Android Back first leaves native fullscreen without firing popstate: that exit closes the camera,
+    // so one Back is enough. An exit caused by a rotation keeps it open (dark bars).
     let wasFullscreen = Boolean(document.fullscreenElement);
     const onFullscreenChange = () => {
       const fullscreen = Boolean(document.fullscreenElement);
-      if (wasFullscreen && !fullscreen) onClose();
+      if (wasFullscreen && !fullscreen && fullscreenExitIsBack(performance.now())) onClose();
       wasFullscreen = fullscreen;
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
