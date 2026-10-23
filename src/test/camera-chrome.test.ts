@@ -1,16 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { cameraChromeMode, isPhoneScreen } from "@/lib/camera-chrome";
+import { afterEach, describe, expect, it } from "vitest";
+import { enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
 
-describe("cameraChromeMode", () => {
-  it("uses fullscreen where the host supports it, else dark system bars", () => {
-    expect(cameraChromeMode({ fullscreenEnabled: true, documentElement: { requestFullscreen: () => Promise.resolve() } })).toBe("fullscreen");
-    // iOS Safari / standalone: no element fullscreen.
-    expect(cameraChromeMode({ fullscreenEnabled: false, documentElement: {} })).toBe("dark-bars");
-    expect(cameraChromeMode({ fullscreenEnabled: true, documentElement: {} })).toBe("dark-bars");
-  });
-  it("holds portrait only on phones (short side under 600 px)", () => {
-    expect(isPhoneScreen(412, 915)).toBe(true);
-    expect(isPhoneScreen(915, 412)).toBe(true);
-    expect(isPhoneScreen(800, 1280)).toBe(false);
+const themes = () => [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
+
+describe("camera chrome", () => {
+  afterEach(() => { exitCameraChrome(); document.head.innerHTML = ""; });
+  it("puts a dark theme-color first while the camera is open and removes it on close", () => {
+    document.head.innerHTML = '<meta name="theme-color" content="#ffffff">';
+    enterCameraChrome();
+    enterCameraChrome();
+    expect(themes()).toEqual(["#000000", "#ffffff"]);
+    exitCameraChrome();
+    expect(themes()).toEqual(["#ffffff"]);
   });
 });

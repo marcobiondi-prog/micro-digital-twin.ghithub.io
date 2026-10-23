@@ -37,7 +37,7 @@ import { loadCopernicus } from "@/views/copernicus-client";
 import { coolingAmount, coolingLabel, coolingReadout, scannedSpecimenThermal, scannedSpecimenCount, MAX_SCANNED_SPECIMENS, type PlacementCooling } from "@/models/ar-placement";
 import { loadAirTemperature } from "@/views/air-temp-client";
 import { clearScans, recordScan, updateScan, useArScans, type ScanRecord } from "@/models/ar-scan-log";
-import { cameraOwnsFullscreen, enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
+import { enterCameraChrome, exitCameraChrome } from "@/lib/camera-chrome";
 
 type Mode = "photo" | "video";
 type Layer = "heat" | "objects" | "grid";
@@ -333,9 +333,8 @@ export function ArCamera({
   useEffect(() => {
     if (!mode) return;
     setArOrientationActive(true);
-    // No white system bars: fullscreen where allowed, else a dark theme-color (lib/camera-chrome).
-    // Chrome shows its own fullscreen notice, so the camera adds none.
-    void enterCameraChrome();
+    // Dark system bars instead of white ones (lib/camera-chrome); no browser fullscreen.
+    enterCameraChrome();
     return () => { setArOrientationActive(false); exitCameraChrome(); };
   }, [mode]);
 
@@ -346,8 +345,7 @@ export function ArCamera({
     let wasFullscreen = Boolean(document.fullscreenElement);
     const onFullscreenChange = () => {
       const fullscreen = Boolean(document.fullscreenElement);
-      // The camera's own fullscreen can drop on rotation: the camera stays open (dark bars).
-      if (wasFullscreen && !fullscreen && !cameraOwnsFullscreen()) onClose();
+      if (wasFullscreen && !fullscreen) onClose();
       wasFullscreen = fullscreen;
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);

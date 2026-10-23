@@ -1,57 +1,29 @@
-// AI camera edge-to-edge: hides the white system bars while the camera is open.
-// 1) Browser fullscreen (hides status and navigation bar) where the host allows it: Android/desktop
-//    Chrome, needs the tap that opened the camera (transient user activation). iOS has no element
-//    fullscreen, so it is skipped there.
-// 2) Always, as the fallback when fullscreen is refused: a dark theme-color, so at least the status
-//    bar turns dark. Both are undone on close. Losing this fullscreen (rotation, Back) never closes the
-//    camera: it simply stays open with the dark bars (cameraOwnsFullscreen).
+// AI camera: dark system bars instead of white ones while the camera is open. No browser fullscreen
+// (it interfered with rotation and brought Chrome's notice): a camera-owned dark theme-color, prepended
+// to <head> because browsers use the first one and the app's own tag is managed by the router head.
 
 const CAMERA_THEME = "#000000";
-let enteredFullscreen = false;
-// Our own theme-color, placed first in <head> (browsers use the first one): the app's own tag is
-// managed by the router head and must not be rewritten.
 let cameraMeta: HTMLMetaElement | null = null;
+// The router may re-render <head> and drop foreign tags: while the camera is open, put it back first.
+let headWatch: MutationObserver | null = null;
+const keepFirst = () => { if (cameraMeta && document.head.firstChild !== cameraMeta) document.head.prepend(cameraMeta); };
 
-/** Which way the camera goes edge-to-edge on this device. */
-export function cameraChromeMode(doc: Pick<Document, "fullscreenEnabled"> & { documentElement: { requestFullscreen?: unknown } }): "fullscreen" | "dark-bars" {
-  return doc.fullscreenEnabled && typeof doc.documentElement.requestFullscreen === "function" ? "fullscreen" : "dark-bars";
-}
-
-/**
- * Fullscreen lifts the app's portrait lock, so phones would also rotate natively on top of the camera's
- * own CSS rotation (a double turn that then settles). Phones keep the screen portrait and let the camera
- * surface turn alone, as outside fullscreen; tablets (short side >= 600 px) keep rotating natively.
- */
-export function isPhoneScreen(width: number, height: number) { return Math.min(width, height) < 600; }
-function holdPhonePortrait() {
-  if (!isPhoneScreen(screen.width, screen.height)) return;
-  const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
-  void orientation?.lock?.("portrait-primary").catch(() => { /* Unsupported host: nothing to hold. */ });
-}
-
-/** True while the camera itself asked for fullscreen; its exit must not be read as "close the camera". */
-let ownsFullscreen = false;
-export function cameraOwnsFullscreen() { return ownsFullscreen; }
-
-/** Resolves true when the camera went fullscreen (Chrome shows its own notice). */
-export function enterCameraChrome(): Promise<boolean> {
+export function enterCameraChrome() {
   if (!cameraMeta) {
     cameraMeta = document.createElement("meta");
     cameraMeta.name = "theme-color";
     cameraMeta.content = CAMERA_THEME;
     cameraMeta.dataset["cameraChrome"] = "";
   }
-  if (!cameraMeta.isConnected) document.head.prepend(cameraMeta);
-  if (cameraChromeMode(document) !== "fullscreen" || document.fullscreenElement) return Promise.resolve(false);
-  ownsFullscreen = true;
-  return document.documentElement.requestFullscreen({ navigationUI: "hide" })
-    .then(() => { enteredFullscreen = true; holdPhonePortrait(); return true; })
-    .catch(() => { ownsFullscreen = false; return false; /* Refused (no user activation, WebView, policy): dark bars stay. */ });
+  keepFirst();
+  if (!headWatch && typeof MutationObserver !== "undefined") {
+    headWatch = new MutationObserver(keepFirst);
+    headWatch.observe(document.head, { childList: true });
+  }
 }
 
 export function exitCameraChrome() {
+  headWatch?.disconnect();
+  headWatch = null;
   cameraMeta?.remove();
-  if (enteredFullscreen && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-  enteredFullscreen = false;
-  ownsFullscreen = false;
 }
