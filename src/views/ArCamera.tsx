@@ -8,6 +8,20 @@ import { extractPlantPhoto } from "@/views/ar-plant-photo";
 
 type D = NonNullable<Detection>;
 const BIN_EMPTY_MS = 1100;
+/** Scan uploads: main frame, leaf close-up and the smaller retry frame (longest side, px). */
+const SCAN_IMAGE_PX = 1280, SCAN_DETAIL_PX = 768, SCAN_RETRY_PX = 960;
+/** The server-fn client turns an HTTP error with an empty body into an Error with an empty message. */
+const isEmptyHttpError = (error: unknown) => error instanceof Error && !error.message.trim();
+/** JPEG of the frame, scaled down so its longest side is at most `maxSide`. */
+function encodeFrame(frame: HTMLCanvasElement, maxSide: number, quality: number) {
+  const scale = Math.min(1, maxSide / Math.max(frame.width, frame.height));
+  if (scale === 1) return frame.toDataURL("image/jpeg", quality);
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(frame.width * scale));
+  out.height = Math.max(1, Math.round(frame.height * scale));
+  out.getContext("2d")?.drawImage(frame, 0, 0, out.width, out.height);
+  return out.toDataURL("image/jpeg", quality);
+}
 /** Native fullscreen rotation: wait this long for the reported size to settle before re-laying out. */
 const NATIVE_SETTLE_MS = 120;
 type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identification: D["identification"] };
@@ -607,19 +621,28 @@ export function ArCamera({
       // Recognition and frozen preview preserve the live crop and rotation.
       const small = freezeCameraFrame(c, video, -rotationRef.current, digitalZoomRef.current);
       if (!small) return;
-      const image = small.toDataURL("image/jpeg", 0.92);
+      // Lighter upload (≤1280 px, q0.85): large tablet frames could fail as an empty HTTP error.
+      const image = encodeFrame(small, SCAN_IMAGE_PX, 0.85);
       playCameraSound("scan-start", 1.8);
       // Same frozen frame, with a second close-up preserving leaf edges and veins.
       const detail = document.createElement("canvas");
       const focus = subjectLocked ? subject : SEARCH_BOX;
       const x = Math.max(0, focus.x - 0.08), y = Math.max(0, focus.y - 0.08);
       const w = Math.min(1 - x, focus.w + 0.16), h = Math.min(1 - y, focus.h + 0.16);
-      const scale = Math.min(1, 1024 / Math.max(w * small.width, h * small.height));
+      const scale = Math.min(1, SCAN_DETAIL_PX / Math.max(w * small.width, h * small.height));
       detail.width = Math.max(1, Math.round(w * small.width * scale));
       detail.height = Math.max(1, Math.round(h * small.height * scale));
       detail.getContext("2d")?.drawImage(small, x * small.width, y * small.height, w * small.width, h * small.height, 0, 0, detail.width, detail.height);
-      const detailImage = detail.toDataURL("image/jpeg", 0.92);
-      const r = await detectArObject({ data: { image, kind, target: arFocusOption(kind, target).id, ...(detailImage.length <= 1_000_000 ? {detailImage} : {}), ...(subjectLocked ? {focus:subject} : {}), ...(satellite ? { satellite } : {}) } });
+      const detailImage = detail.toDataURL("image/jpeg", 0.85);
+      const request = { kind, target: arFocusOption(kind, target).id, ...(subjectLocked ? { focus: subject } : {}), ...(satellite ? { satellite } : {}) };
+      let r: Awaited<ReturnType<typeof detectArObject>>;
+      try {
+        r = await detectArObject({ data: { ...request, image, ...(detailImage.length <= 1_000_000 ? { detailImage } : {}) } });
+      } catch (first) {
+        // An HTTP error with an empty body (oversized or too slow): one retry, smaller and without the close-up.
+        if (version !== scanVersion.current || !isEmptyHttpError(first)) throw first;
+        r = await detectArObject({ data: { ...request, image: encodeFrame(small, SCAN_RETRY_PX, 0.8) } });
+      }
       if (version !== scanVersion.current) return;
       const d = r.detection;
       setSoil(r.soil ?? null);
@@ -673,7 +696,7 @@ export function ArCamera({
       console.error("AR scan", error);
       const message = error instanceof Error ? error.message : "";
       // The host's own error text (e.g. FUNCTION_INVOCATION_TIMEOUT) names the real cause.
-      const detail = message.replace(/<(style|script)[\s\S]*?<\/\1>|<[^>]*>/gi, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+      const detail = message.replace(/<(style|script)[\s\S]*?<\/\1>|<[^>]*>/gi, " ").replace(/\s+/g, " ").trim().slice(0, 140) || (isEmptyHttpError(error) ? "risposta vuota dal server" : "");
       if (version === scanVersion.current) playCameraSound("scan-fail", 1.8);
       if (version === scanVersion.current) setFound(/Unauthorized/.test(message) ? "Sessione scaduta: esci e accedi di nuovo prima di una nuova analisi." : `Analisi interrotta${detail ? ` (${detail})` : ""}. Controlla la connessione prima di una nuova analisi.`);
     } finally {
