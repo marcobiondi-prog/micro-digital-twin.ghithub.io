@@ -8,6 +8,7 @@ import { plantPhotoBounds, type PlantOutline } from "@/models/ar-plant-photo";
 import { arFocusOption } from "@/models/ar-focus";
 import { satellitePrompt } from "@/models/copernicus";
 import { sameBotanicalName, usableBotanicalMatch } from "@/models/ar-botanical-match";
+import { pickGbifPhoto, pickPowoPhoto, type ReferencePhoto } from "@/models/ar-reference-photo";
 
 export type GrowthForm = "columnar" | "conical" | "round" | "umbrella" | "vine" | "shrub";
 
@@ -45,6 +46,8 @@ export type Detection = {
     gbifUrl: string | null;
     /** Catalogue of Life: elenco mondiale delle specie (nome accettato). */
     colUrl: string | null;
+    /** Reference photo of the species from a botanical database (Kew POWO, else GBIF), shown in Esito. */
+    photo: ReferencePhoto | null;
     form: GrowthForm;
     heightM: number;
     crownM: number;
@@ -107,6 +110,22 @@ async function catalogueOfLife(name: string) {
   } catch {
     return null;
   }
+}
+
+/** Reference photo of the species: Kew's Plants of the World Online first, then an openly licensed GBIF photo.
+ * Best effort with short timeouts: a slow or missing database never holds up or fails the scan. */
+async function referencePhoto(name: string, gbifKey: number | null): Promise<ReferencePhoto | null> {
+  const get = async (url: string) => {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(4000), headers: { accept: "application/json" } });
+      return r.ok ? ((await r.json()) as unknown) : null;
+    } catch {
+      return null;
+    }
+  };
+  const kew = pickPowoPhoto(await get(`https://powo.science.kew.org/api/2/search?q=${encodeURIComponent(name)}`), name);
+  if (kew || !gbifKey) return kew;
+  return pickGbifPhoto(await get(`https://api.gbif.org/v1/occurrence/search?taxonKey=${gbifKey}&mediaType=StillImage&limit=20`));
 }
 
 const detectInput = z.object({ image: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).max(3_000_000), detailImage: z.string().regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/).max(1_000_000).optional(), kind: z.enum(["urban", "vineyard"]).default("urban"), target: z.enum(["tree", "ground", "leaf", "canopy", "interrow"]).optional(), focus: z.object({x:z.number().min(0).max(1),y:z.number().min(0).max(1),w:z.number().min(0).max(1),h:z.number().min(0).max(1)}).optional(), satellite: z.object({ ndvi: z.number().min(-1).max(1).optional(), ndviDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), surfaceTemp: z.number().min(-60).max(80).optional(), tempDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional() });
@@ -199,13 +218,16 @@ async function recognize(data: z.infer<typeof detectInput>): Promise<DetectResul
     const crownM = num(pl.crownM, 0.3, 30, 4);
     const density = num(pl.density, 0, 1, 0.6);
     const evergreen = Boolean(pl.evergreen);
+    const scientificName = col?.name ?? g?.name ?? sci;
+    const photo = await referencePhoto(scientificName, g?.key ?? null);
     species = {
       commonName: String(pl.commonName ?? p.label ?? sci).slice(0, 40),
-      scientificName: col?.name ?? g?.name ?? sci,
+      scientificName,
       family: col?.family ?? g?.family ?? null,
       gbifKey: g?.key ?? null,
       gbifUrl: g ? `https://www.gbif.org/species/${g.key}` : null,
       colUrl: col ? `https://www.catalogueoflife.org/data/taxon/${encodeURIComponent(col.id)}` : null,
+      photo,
       form,
       heightM: num(pl.heightM, 0.3, 60, 6),
       crownM,

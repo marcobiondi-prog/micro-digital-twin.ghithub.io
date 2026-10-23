@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { ArKind } from "@/models/ar-focus";
 import { coolingLabel } from "@/models/ar-placement";
+import type { ReferencePhoto } from "@/models/ar-reference-photo";
 
 /**
  * Every completed AI camera scan, per flow, kept for the report whether or not a photo was taken.
@@ -11,6 +12,8 @@ export type ScanSpecies = {
   commonName: string; scientificName: string; family: string | null; level: string;
   /** Per specimen; null when the species has no cooling estimate. */
   cooling: number | null; shade: number | null;
+  /** Reference photo from a botanical database (Kew POWO or GBIF); absent on older records. */
+  photo?: ReferencePhoto | null;
 };
 export type ScanSoil = { label: string; permeability: string; plantable: boolean; note: string };
 export type ScanRecord = {
