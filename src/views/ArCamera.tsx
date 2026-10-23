@@ -4,7 +4,7 @@ import { Activity, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Flame, Inf
 import { supportsCameraTorch, setCameraTorch } from "@/lib/camera-torch";
 import { detectArObject, type Detection, type Soil } from "@/controllers/ar-detect.functions";
 import type { ReferencePhoto, ReferenceVideo } from "@/models/ar-reference-photo";
-import { findSubject, SEARCH_BOX, smoothBox, type SubjectBox } from "@/lib/ar-subject-tracker";
+import { findSubject, frameUsable, SEARCH_BOX, smoothBox, type SubjectBox } from "@/lib/ar-subject-tracker";
 import { extractPlantPhoto } from "@/views/ar-plant-photo";
 
 type D = NonNullable<Detection>;
@@ -250,6 +250,8 @@ export function ArCamera({
   // The reticle follows greens and bark browns (trunks); the scan gate for vine leaf/canopy
   // counts green alone, so wooden furniture moves the reticle but never unlocks the AI.
   const greenLockRef = useRef(false);
+  // Whether the latest frame shows anything (not black or flat): an unlocked scan still goes to the AI then.
+  const frameUsableRef = useRef(false);
   useEffect(() => {
     if (!mode || !ready) return;
     const sample = document.createElement("canvas");
@@ -267,6 +269,7 @@ export function ArCamera({
       // Stesso ritaglio "a riempimento" dell'anteprima: il mirino coincide con ciò che si vede.
       drawCameraVideo(g, video, W, H, -rotationRef.current, digitalZoomRef.current);
       const pixels = g.getImageData(0, 0, W, H).data;
+      frameUsableRef.current = frameUsable(pixels, W, H);
       const found = findSubject(pixels, W, H, locked ? box : null);
       if (found) { hits++; misses = 0; } else { misses++; hits = 0; }
       if (findSubject(pixels, W, H, null, { bark: false })) { greenHits++; greenMisses = 0; } else { greenMisses++; greenHits = 0; }
@@ -616,7 +619,7 @@ export function ArCamera({
     try {
       // A vegetation target with no vegetation in the frame never calls the AI: a short visible scan
       // (sweep and sound) confirms the tap, then it stops with the section's message.
-      const nothingToScan = scanPrecheck(kind, target, arFocusOption(kind, target).id === "tree" ? subjectLocked : greenLockRef.current);
+      const nothingToScan = scanPrecheck(kind, target, arFocusOption(kind, target).id === "tree" ? subjectLocked : greenLockRef.current, frameUsableRef.current);
       if (nothingToScan) {
         playCameraSound("scan-start", 1.8);
         await new Promise((resolve) => window.setTimeout(resolve, PRECHECK_SCAN_MS));
