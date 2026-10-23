@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cameraChromeMode, enterCameraChrome, exitCameraChrome, fullscreenExitIsBack, isPhoneScreen, ROTATION_EXIT_WINDOW_MS } from "@/lib/camera-chrome";
+import { cameraChromeMode, cameraRotatesNatively, enterCameraChrome, exitCameraChrome, fullscreenExitIsBack, ROTATION_EXIT_WINDOW_MS } from "@/lib/camera-chrome";
 
 const themes = () => [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
 
@@ -9,9 +9,11 @@ describe("camera chrome", () => {
     expect(cameraChromeMode({ fullscreenEnabled: true, documentElement: { requestFullscreen: () => Promise.resolve() } })).toBe("fullscreen");
     expect(cameraChromeMode({ fullscreenEnabled: false, documentElement: {} })).toBe("dark-bars");
   });
-  it("holds portrait only on phones (short side under 600 px)", () => {
-    expect(isPhoneScreen(412, 915)).toBe(true);
-    expect(isPhoneScreen(800, 1280)).toBe(false);
+  it("keeps the camera's own rotation unless fullscreen handed rotation to Android", async () => {
+    await enterCameraChrome();
+    expect(cameraRotatesNatively()).toBe(false);
+    exitCameraChrome();
+    expect(cameraRotatesNatively()).toBe(false);
   });
   it("reads a fullscreen exit as Back unless a rotation just happened", () => {
     expect(fullscreenExitIsBack(10_000, Number.NEGATIVE_INFINITY)).toBe(true);
