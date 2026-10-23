@@ -3,26 +3,47 @@ export async function prepareArOrientation(): Promise<void> {
   setArOrientationActive(true);
 }
 
-/** Native orientation policy shared by the app shell and camera lifecycle. */
-export async function syncAppOrientation(): Promise<void> {
+/**
+ * Native orientation policy shared by the app shell and camera lifecycle. Resolves true when the wanted lock
+ * is held. Callers fire it on every resize/rotation/tap, so: an identical lock already held is not requested
+ * again, and a request superseded by a newer one (AbortError) is not a refusal: it must not unlock (that
+ * flashed the screen back to portrait mid-rotation) and it answers with the newer request's outcome.
+ */
+let heldLock: { target: ScreenOrientation; value: string; fullscreen: boolean } | null = null;
+let latestSync: Promise<boolean> = Promise.resolve(false);
+export function syncAppOrientation(): Promise<boolean> {
+  const run: Promise<boolean> = applyAppOrientation().catch((error: unknown) => {
+    if (error instanceof DOMException && error.name === "AbortError" && latestSync !== run) return latestSync;
+    return false;
+  });
+  latestSync = run;
+  return run;
+}
+async function applyAppOrientation(): Promise<boolean> {
   const active = document.documentElement.hasAttribute("data-ar-camera");
   const videoLandscape = document.documentElement.hasAttribute("data-home-video-landscape");
   const mobile = navigator.maxTouchPoints > 0 || Math.min(screen.width, screen.height) <= 639;
-  if (!active && !mobile) return;
+  if (!active && !mobile) return false;
   const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
-  if (!orientation) return;
+  if (!orientation?.lock) return false;
+  // AR rotates freely; a phone home video turns the screen landscape; otherwise portrait.
+  const value = active ? "any" : videoLandscape ? "landscape" : "portrait-primary";
+  const fullscreen = Boolean(document.fullscreenElement);
+  if (heldLock && heldLock.target === orientation && heldLock.value === value && heldLock.fullscreen === fullscreen) return true;
   try {
-    // AR rotates freely; a phone home video turns the screen landscape; otherwise portrait.
-    await orientation.lock?.(active ? "any" : videoLandscape ? "landscape" : "portrait-primary");
+    await orientation.lock(value);
+    heldLock = { target: orientation, value, fullscreen };
     // A portrait request already in flight must not relock a newly opened camera.
-    if (active !== document.documentElement.hasAttribute("data-ar-camera")) {
-      await syncAppOrientation();
-    }
-  } catch {
+    if (active !== document.documentElement.hasAttribute("data-ar-camera")) return syncAppOrientation();
+    return true;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    heldLock = null;
     // Release runtime portrait locking; manifest/APK overrides need host support.
     if (active && document.documentElement.hasAttribute("data-ar-camera")) {
       try { orientation.unlock(); } catch { /* Unsupported host. */ }
     }
+    return false;
   }
 }
 

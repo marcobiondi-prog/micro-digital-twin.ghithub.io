@@ -7,6 +7,8 @@
 // Android Back first only leaves fullscreen (no popstate): a fullscreen exit that does not follow a
 // rotation is that Back and closes the camera at once, so one Back is enough (fullscreenExitIsBack).
 
+import { syncAppOrientation } from "@/lib/ar-orientation";
+
 const CAMERA_THEME = "#000000";
 let enteredFullscreen = false;
 let cameraMeta: HTMLMetaElement | null = null;
@@ -26,12 +28,12 @@ export function cameraChromeMode(doc: Pick<Document, "fullscreenEnabled"> & { do
  */
 let nativeRotation = false;
 export function cameraRotatesNatively() { return nativeRotation; }
+// Through the app's shared policy (not a second lock call, which would abort the shell's own request).
 function allowNativeRotation() {
-  const orientation = screen.orientation as ScreenOrientation & { lock?: (value: string) => Promise<void> };
-  if (!orientation?.lock) return;
-  void orientation.lock("any")
-    .then(() => { nativeRotation = Boolean(document.fullscreenElement); window.dispatchEvent(new Event("ar-orientation-change")); })
-    .catch(() => { /* Host refuses: the camera keeps its own rotation. */ });
+  void syncAppOrientation().then((held) => {
+    nativeRotation = held && Boolean(document.fullscreenElement);
+    window.dispatchEvent(new Event("ar-orientation-change"));
+  });
 }
 const onFullscreenChange = () => {
   if (document.fullscreenElement || !nativeRotation) return;
