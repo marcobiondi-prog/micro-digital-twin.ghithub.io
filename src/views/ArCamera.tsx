@@ -1505,7 +1505,7 @@ function EsitoPhoto({ reference, scan, name }: { reference: ReferencePhoto | nul
     <figure className="ar-esito-photo">
       <div className="relative">
         <img src={ref?.url ?? scan!} alt={ref ? `Foto di riferimento: ${name ?? "specie riconosciuta"}` : `Foto reale: ${name ?? "pianta scansionata"}`}
-          className="ar-real-photo" referrerPolicy="no-referrer" loading="lazy" onError={() => { if (ref) setFailed(ref.url); }} />
+          className={`ar-real-photo${ref ? " is-reference" : ""}`} referrerPolicy="no-referrer" loading="lazy" onError={() => { if (ref) setFailed(ref.url); }} />
         {ref && scan && <img src={scan} alt="La tua scansione" title="La tua scansione" className="ar-esito-scan-inset" />}
       </div>
       <figcaption className="text-muted-foreground">
