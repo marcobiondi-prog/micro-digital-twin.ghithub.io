@@ -8,6 +8,8 @@ import { extractPlantPhoto } from "@/views/ar-plant-photo";
 
 type D = NonNullable<Detection>;
 const BIN_EMPTY_MS = 1100;
+/** Native fullscreen rotation: wait this long for the reported size to settle before re-laying out. */
+const NATIVE_SETTLE_MS = 120;
 type SpeciesInfo = NonNullable<D["species"]> & { cooling: D["cooling"]; identification: D["identification"] };
 /** One camera section's scan, set aside while another section is open. */
 type TabResult = {
@@ -271,8 +273,15 @@ export function ArCamera({
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     let transition: { skipTransition: () => void; finished: Promise<void> } | undefined;
+    let nativeTimer: ReturnType<typeof setTimeout> | undefined;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    // While Android rotates natively it reports in-between sizes: apply only the settled one, once.
     const sync = () => {
+      if (!cameraRotatesNatively()) { clearTimeout(nativeTimer); nativeTimer = undefined; syncNow(); return; }
+      clearTimeout(nativeTimer);
+      nativeTimer = setTimeout(() => { nativeTimer = undefined; syncNow(); }, NATIVE_SETTLE_MS);
+    };
+    const syncNow = () => {
       const rect = surfaceRef.current?.getBoundingClientRect();
       if (!rect?.width || !rect.height) return;
       const angle = screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
@@ -284,8 +293,15 @@ export function ArCamera({
       if (next.width === current.width && next.height === current.height && next.rotation === current.rotation) return;
       const turn = shortestRotationDelta(current.rotation, next.rotation);
       const animate = !native && current.width > 0 && !reducedMotion.matches && (turn !== 0 || next.landscape !== current.landscape);
+      const flipped = current.width > 0 && next.landscape !== current.landscape;
       const apply = () => { rotationRef.current = next.rotation; current = next; setViewport(next); };
       transition?.skipTransition();
+      if (native) {
+        apply();
+        // A short fade makes the new panel layout arrive softly after Android's own turn.
+        if (flipped && !reducedMotion.matches) surfaceRef.current?.animate([{ opacity: 0.55 }, { opacity: 1 }], { duration: 220, easing: "ease-out" });
+        return;
+      }
       if (animate && document.startViewTransition) {
         document.documentElement.style.setProperty("--ar-rotation-turn", `${turn}deg`);
         transition = document.startViewTransition(() => flushSync(apply));
@@ -300,6 +316,8 @@ export function ArCamera({
     };
     const onDevice = (event: DeviceOrientationEvent) => {
       beta = event.beta; gamma = event.gamma;
+      // Native rotation ignores the sensors; letting them call sync would keep postponing the settle timer.
+      if (cameraRotatesNatively()) return;
       if (settleTimer === undefined) settleTimer = setTimeout(() => { settleTimer = undefined; sync(); }, 120);
     };
     const observer = new ResizeObserver(sync);
@@ -321,6 +339,7 @@ export function ArCamera({
       observer.disconnect();
       clearTimeout(settleTimer);
       clearTimeout(resizeTimer);
+      clearTimeout(nativeTimer);
       transition?.skipTransition();
       document.documentElement.style.removeProperty("--ar-rotation-turn");
       window.removeEventListener("resize", onResize);
